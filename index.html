@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duel!</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<style>
+  :root{
+    --paper:#E6E3DB; --paper-2:#DAD6CC; --ink:#161514; --ink-2:#4A4844; --ink-3:#7C7A74;
+    --baize:#22302B; --baize-line:#3E4E47; --baize-text:#C9CFC9; --baize-ghost:#7E8C85;
+    --card:#FBFAF6; --wound:#A8201C; --wound-rim:#5E0F0F;
+    --card-w:150px; --card-h:224px; --serif:"Crimson Pro",Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:17px;line-height:1.4}
+  button,select,input{font:inherit}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 20px 48px}
+  header{display:flex;align-items:baseline;gap:20px;flex-wrap:wrap;padding:0 4px 14px;border-bottom:2px solid var(--ink)}
+  header h1{margin:0;font-size:40px;font-weight:600;letter-spacing:-.01em;line-height:1}
+  header .room{color:var(--ink-3)}
+  header .room b{color:var(--ink);font-weight:600;letter-spacing:.14em}
+  header .status{margin-left:auto;color:var(--ink-2);font-style:italic}
+  .btn{background:var(--ink);color:var(--paper);border:2px solid var(--ink);border-radius:2px;padding:7px 18px;cursor:pointer;font-weight:600}
+  .btn:hover:not(:disabled){background:#000}
+  .btn:disabled{opacity:.45;cursor:default}
+  .btn.quiet{background:transparent;color:var(--ink)}
+  .btn.quiet:hover:not(:disabled){background:var(--paper-2)}
+  .btn:focus-visible,select:focus-visible,input:focus-visible,.hcard:focus-visible{outline:3px solid var(--wound);outline-offset:3px}
+  select,input{background:var(--card);color:var(--ink);border:1.5px solid var(--ink);border-radius:2px;padding:7px 10px}
+  input.code{letter-spacing:.25em;text-transform:uppercase;width:8.5em;text-align:center;font-weight:600;font-size:20px}
+
+  /* lobby */
+  .lobby{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:18px;border:2px solid var(--ink)}
+  @media (max-width:760px){.lobby{grid-template-columns:1fr}}
+  .lobby section{padding:22px 22px 26px;display:flex;flex-direction:column;gap:12px;border-right:2px solid var(--ink)}
+  .lobby section:last-child{border-right:0}
+  @media (max-width:760px){.lobby section{border-right:0;border-bottom:2px solid var(--ink)}.lobby section:last-child{border-bottom:0}}
+  .lobby h2{margin:0;font-size:24px;font-weight:600}
+  .lobby p{margin:0;color:var(--ink-2)}
+  .lobby .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .share{display:none;flex-direction:column;gap:8px;margin-top:6px}
+  .share.show{display:flex}
+  .share .code{font-size:44px;letter-spacing:.22em;font-weight:600;line-height:1}
+  .share input{width:100%;font-size:13px;color:var(--ink-3)}
+  #joinMsg,#hostWait{color:var(--ink-3);font-style:italic}
+
+  /* game */
+  .game{display:none;grid-template-columns:minmax(0,1fr) 260px;grid-template-rows:auto auto;gap:18px;margin-top:18px}
+  .game .hand{grid-column:1}
+  .game.show{display:grid}
+  @media (max-width:900px){.game{grid-template-columns:1fr}}
+  .table{background:var(--baize);color:var(--baize-text);border:2px solid var(--ink);border-radius:10px;padding:18px 22px 16px;box-shadow:inset 0 0 0 6px #1a2622, inset 0 0 0 7px var(--baize-line)}
+  .zone{display:grid;grid-template-columns:200px 1fr 200px;grid-template-areas:"pile play stance";align-items:center;gap:14px;padding:8px 6px 14px}
+  .zone .pile-wrap{grid-area:pile;justify-self:start}
+  .zone .play{grid-area:play;justify-self:center;width:var(--card-w);height:var(--card-h);position:relative;zoom:.8}
+  .zone .play:empty{border:1.5px dashed var(--baize-line);border-radius:6px}
+  .zone .stance{grid-area:stance;justify-self:end;width:110px;height:164px;position:relative}
+  .zone .stance > .cardface,.zone .stance > .slot-empty{transform:rotate(4deg)}
+  .zone.mine .stance > .cardface,.zone.mine .stance > .slot-empty{transform:rotate(-4deg)}
+  .zone .stance .cap{position:absolute;left:0;right:0;top:100%;margin-top:8px;text-align:center;font-size:13px;color:var(--baize-ghost);font-style:italic}
+  @media (max-width:760px){.zone{grid-template-columns:1fr 1fr;grid-template-areas:"pile stance" "play play"}.zone .stance{justify-self:center}}
+  .slot-empty{width:100%;height:100%;border:1.5px dashed var(--baize-line);border-radius:6px}
+  .who{display:flex;align-items:baseline;gap:10px;padding:0 6px;color:var(--baize-ghost);font-style:italic}
+  .who b{font-style:normal;color:var(--baize-text);font-weight:600;font-size:18px}
+  .midline{position:relative;text-align:center;padding:12px 0;margin:2px 0}
+  .midline::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:1.5px solid var(--baize-line)}
+  .midline #clash{position:relative;display:inline-block;background:var(--baize);padding:0 16px;font-size:19px;min-height:1.4em}
+  .midline #clash:empty{padding:0}
+  .midline .dim{color:var(--baize-ghost)}
+  .midline .final{font-size:26px;font-weight:600;color:#fff}
+
+  /* wounds */
+  .pilebox{display:flex;align-items:center;gap:12px}
+  .pile{position:relative;width:140px;height:88px}
+  .pile i{position:absolute;width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#c93a33,var(--wound) 60%,var(--wound-rim));border:1px solid var(--wound-rim);transform:translate(-50%,-50%);animation:landing .3s ease-out}
+  @keyframes landing{from{transform:translate(-50%,-160%) scale(1.2);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+  .count{font-size:40px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;color:#fff;min-width:1.2em;text-align:center}
+  .count small{display:block;font-size:13px;font-weight:400;color:var(--baize-ghost);font-style:italic;margin-top:2px}
+
+  /* the card */
+  .cardface{width:var(--card-w);height:var(--card-h);background:var(--card);color:var(--ink);border:2px solid var(--ink);border-radius:6px;padding:10px 11px 9px;display:flex;flex-direction:column;text-align:center;position:relative;box-shadow:0 1px 0 rgba(0,0,0,.35),0 6px 14px rgba(0,0,0,.28)}
+  .cardface::before{content:"";position:absolute;inset:4px;border:1px solid var(--ink);border-radius:3px;pointer-events:none}
+  .cardface .c-name{font-size:19px;font-weight:600;line-height:1.1;padding:4px 0 6px;border-bottom:1px solid var(--ink);margin:0 2px 8px}
+  .cardface .c-what{font-size:13px;line-height:1.3;color:var(--ink-2);flex:1;padding:0 2px}
+  .cardface .c-live{margin-top:6px;font-size:12.5px;color:var(--ink);font-weight:600}
+  .cardface .c-rule{height:5px;border-top:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);margin:8px 2px 7px}
+  .cardface .c-stance{font-size:12.5px;line-height:1.3;color:var(--ink-2);font-style:italic;min-height:3.9em;display:flex;align-items:center;justify-content:center;padding:0 2px}
+  .cardface.back{padding:0;background:var(--card) repeating-linear-gradient(45deg,transparent 0 5px,rgba(22,21,20,.10) 5px 6px)}
+  .cardface.back::after{content:"";position:absolute;left:50%;top:50%;width:54px;height:54px;transform:translate(-50%,-50%);background:
+    linear-gradient(var(--ink),var(--ink)) center/2px 100% no-repeat,
+    linear-gradient(var(--ink),var(--ink)) center/100% 2px no-repeat;
+    -webkit-mask:none}
+  .cardface.back::before{inset:6px}
+  .cardface.small{width:110px;height:164px;padding:7px 7px 6px}
+  .cardface.small .c-name{font-size:14px;padding:2px 0 4px;margin-bottom:5px}
+  .cardface.small .c-what{font-size:9.5px}
+  .cardface.small .c-stance{font-size:9.5px;min-height:3em}
+  .cardface.small .c-rule{height:4px;margin:5px 1px 4px}
+  .cardface.small .c-live{display:none}
+
+  /* played-card animations */
+  .arrive{animation:arrive .4s cubic-bezier(.2,.7,.2,1)}
+  @keyframes arrive{from{transform:translateY(-70px) rotate(-3deg);opacity:0}to{transform:none;opacity:1}}
+  .flip{animation:flip .5s ease-out}
+  @keyframes flip{0%{transform:rotateY(90deg)}100%{transform:rotateY(0)}}
+  .ghost .cardface{box-shadow:0 10px 24px rgba(0,0,0,.4)}
+
+  /* hand, fanned */
+  .hand{display:flex;justify-content:center;align-items:flex-end;gap:0;margin:0;padding:10px 12px 22px;min-height:calc(var(--card-h) + 46px);position:relative}
+  .hcard{padding:0;border:0;background:transparent;cursor:pointer;border-radius:6px;margin:0 -10px;transition:transform .18s ease,opacity .18s;transform-origin:50% 120%}
+  .hcard:nth-child(1){transform:rotate(-7.5deg) translateY(18px)}
+  .hcard:nth-child(2){transform:rotate(-4.5deg) translateY(7px)}
+  .hcard:nth-child(3){transform:rotate(-1.5deg) translateY(1px)}
+  .hcard:nth-child(4){transform:rotate(1.5deg) translateY(1px)}
+  .hcard:nth-child(5){transform:rotate(4.5deg) translateY(7px)}
+  .hcard:nth-child(6){transform:rotate(7.5deg) translateY(18px)}
+  .hcard:hover:not(:disabled),.hcard:focus-visible:not(:disabled){transform:translateY(-26px) rotate(0) scale(1.04);z-index:3}
+  .hcard:disabled{cursor:default;opacity:.55}
+  @media (max-width:760px){.hand{flex-wrap:wrap;gap:10px}.hcard{margin:0}.hcard:nth-child(n){transform:none}}
+
+  .panel{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:6px 6px 0}
+  .panel .note{color:var(--baize-ghost);font-style:italic}
+  .table select{background:var(--card)}
+  aside{border:2px solid var(--ink);padding:14px 16px;max-height:760px;overflow:auto;font-size:15px;background:var(--paper)}
+  aside h2{margin:0 0 8px;font-size:15px;font-weight:600;letter-spacing:.02em;border-bottom:1px solid var(--ink);padding-bottom:6px}
+  aside ul{list-style:none;margin:0;padding:0}
+  aside li{padding:7px 0;border-bottom:1px solid var(--paper-2)}
+  aside li b{font-weight:600;margin-right:8px}
+  aside .dim{color:var(--ink-3)}
+  .rules{margin-top:22px;color:var(--ink-2);max-width:74ch}
+  .rules summary{cursor:pointer;color:var(--ink);font-weight:600}
+  .rules p{margin:8px 0}
+  @media (prefers-reduced-motion:reduce){.arrive,.flip,.pile i,.hcard{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Duel!</h1>
+  <div class="room" id="roomLine"></div>
+  <div class="status" id="status"></div>
+</header>
+
+<div class="lobby" id="lobby">
+  <section>
+    <h2>Host a duel</h2>
+    <p>You get a five-letter code. Send it, or the link, to your opponent.</p>
+    <div class="row"><button class="btn" id="hostBtn">Host</button><span id="hostWait"></span></div>
+    <div class="share" id="share">
+      <div class="code" id="shareCode"></div>
+      <input id="shareLink" readonly>
+      <div class="row"><button class="btn quiet" id="copyBtn">Copy link</button></div>
+    </div>
+  </section>
+  <section>
+    <h2>Join a duel</h2>
+    <p>Enter the code you were sent.</p>
+    <div class="row"><input class="code" id="joinCode" maxlength="5" placeholder="·····"><button class="btn" id="joinBtn">Join</button></div>
+    <p id="joinMsg"></p>
+  </section>
+  <section>
+    <h2>Practice</h2>
+    <p>Play the machine. It plays the equilibrium mix for each position, so it has no habits to read.</p>
+    <div class="row"><select id="botW"></select><button class="btn" id="botBtn">Start</button></div>
+  </section>
+</div>
+
+<div class="game" id="game">
+  <div class="table">
+    <div class="who"><b id="oppLabel"></b><span id="oppReady"></span></div>
+    <div class="zone">
+      <div class="pile-wrap pilebox"><div class="pile" id="oppPile"></div><div class="count"><span id="oppCount">0</span><small>wounds</small></div></div>
+      <div class="play" id="oppPlay"></div>
+      <div class="stance" id="oppStance"></div>
+    </div>
+    <div class="midline"><span id="clash"></span></div>
+    <div class="zone mine">
+      <div class="pile-wrap pilebox"><div class="pile" id="myPile"></div><div class="count"><span id="myCount">0</span><small>wounds</small></div></div>
+      <div class="play" id="myPlay"></div>
+      <div class="stance" id="myStance"></div>
+    </div>
+    <div class="who"><b id="myLabel"></b></div>
+    <div class="panel" id="armPanel">
+      <select id="weaponSel"></select>
+      <button class="btn" id="readyBtn">Ready</button>
+      <span class="note">Faster weapons win races; heavier ones hit harder. Twenty-five wounds ends it.</span>
+    </div>
+    <div class="panel" id="endPanel" style="display:none">
+      <button class="btn" id="rematchBtn">Play again</button>
+      <button class="btn quiet" id="leaveBtn">Back to lobby</button>
+    </div>
+  </div>
+  <aside>
+    <h2>Exchanges</h2>
+    <ul id="log"></ul>
+  </aside>
+  <div class="hand" id="hand"></div>
+</div>
+
+<details class="rules">
+  <summary>How it works</summary>
+  <p>Both players put a card face down, then reveal together. Attack against attack is a race: weapon speed penalty plus 4 for a light attack or 9 for a heavy one, plus any penalty from your stance. Lower lands; equal means both land. Speed only matters between two attacks.</p>
+  <p>Your revealed card stays on the table as your stance and changes your next card; the card it replaces goes back to your hand. Every card is always available.</p>
+  <p>Online play is peer to peer. Each player commits to a hashed card first and only reveals once both hashes are in, so nobody can wait to see the other's card.</p>
+</details>
+</div>
+
+<script>
+// Card combat engine. Mirrors combo_search.py exactly.
+const CARDS = ["block", "light", "heavy", "parry", "grab", "dodge"];
+const WEAPONS = {
+  Dagger: { speed: 1, dmg: 5 }, Short: { speed: 2, dmg: 6 }, Long: { speed: 3, dmg: 7 },
+  Battle: { speed: 4, dmg: 8 }, Great: { speed: 5, dmg: 9 },
+};
+const WEAPON_LABEL = { Dagger: "Dagger", Short: "Short sword", Long: "Long sword", Battle: "Battle axe", Great: "Great sword" };
+const ATTACK_SPEED = { light: 4, heavy: 9 };
+const MULT = { light: 1, heavy: 2, parry: 1, grab: 2 };
+const ABSORB = 7;
+const PENALTY = 3;
+// base matrix, row = mine, col = theirs
+const MAT = {
+  block: ["N", "B1", "B1", "N", "N", "N"],
+  light: ["B2", "F", "F", "W2", "W1", "D2"],
+  heavy: ["B2", "F", "F", "W1", "W1", "D2"],
+  parry: ["N", "W1", "W2", "N", "N", "N"],
+  grab:  ["N", "W2", "W2", "N", "N", "W1"],
+  dodge: ["N", "D1", "D1", "N", "W2", "N"],
+};
+// what your last card does to your next card
+const COMBO = {
+  light: { target: "parry", beats: "heavy", penalty: true },
+  heavy: { penalty: true },
+  parry: { penalty: true },
+  grab:  { target: "grab", beats: "heavy" },
+  dodge: { target: "light", beats: "parry" },
+  block: {},
+};
+const CARD_TEXT = {
+  block: "Stops any attack short of 7 damage; bigger hits get through minus 7. Grab does nothing to it.",
+  light: "Fast attack for weapon damage. Beats grab and slower attacks. Stopped by block, dodge and parry.",
+  heavy: "Slow attack for double damage. Beats parry and grab. Stopped by dodge; block takes off 7.",
+  parry: "Beats light attack and strikes back for weapon damage. Loses to heavy.",
+  grab:  "Beats dodge for double damage. Loses to any attack. Nothing against block.",
+  dodge: "Avoids any attack completely. Loses to grab.",
+};
+const COMBO_TEXT = {
+  light: "your parry will also stop heavy; your next attack is 3 slower",
+  heavy: "your next attack is 3 slower",
+  parry: "your next attack is 3 slower",
+  grab:  "your next grab beats heavy",
+  dodge: "your next light attack can't be parried",
+  block: "no carry-over",
+};
+
+function mods(last, cur) {
+  const m = { slow: 0, beats: null };
+  if (!last) return m;
+  const c = COMBO[last];
+  if (c.penalty) m.slow += PENALTY;
+  if (c.target === cur) m.beats = c.beats;
+  return m;
+}
+
+// returns {d1, d2, code, s1, s2}: damage I deal, damage they deal
+function resolve(m1, m2, w1, w2, l1, l2) {
+  const a = mods(l1, m1), b = mods(l2, m2);
+  const d1raw = w1.dmg * (MULT[m1] || 0), d2raw = w2.dmg * (MULT[m2] || 0);
+  const s1 = w1.speed + (ATTACK_SPEED[m1] || 0) + a.slow;
+  const s2 = w2.speed + (ATTACK_SPEED[m2] || 0) + b.slow;
+  let code = MAT[m1][CARDS.indexOf(m2)];
+  if (a.beats === m2 && b.beats === m1) code = "N";
+  else if (a.beats === m2) code = "W1";
+  else if (b.beats === m1) code = "W2";
+  let d1 = 0, d2 = 0, note = "";
+  if (code === "N") note = "nothing happens";
+  else if (code === "D1") note = "you dodge it";
+  else if (code === "D2") note = "they dodge it";
+  else if (code === "B1") { d2 = Math.max(0, d2raw - ABSORB); note = d2 ? `you block, ${d2} gets through` : "you block it"; }
+  else if (code === "B2") { d1 = Math.max(0, d1raw - ABSORB); note = d1 ? `they block, ${d1} gets through` : "they block it"; }
+  else if (code === "W1") { d1 = d1raw; note = `you land ${m1} for ${d1}`; }
+  else if (code === "W2") { d2 = d2raw; note = `they land ${m2} for ${d2}`; }
+  else { // race
+    if (s1 < s2) { d1 = d1raw; note = `you're faster (${s1} vs ${s2}), ${d1} damage`; }
+    else if (s2 < s1) { d2 = d2raw; note = `they're faster (${s2} vs ${s1}), ${d2} damage`; }
+    else { d1 = d1raw; d2 = d2raw; note = `same speed (${s1}), both land`; }
+  }
+  return { d1, d2, code, s1, s2, note };
+}
+
+
+const NASH = {"Dagger|Dagger": {"block|block": [0.0, 0.35, 0.139, 0.166, 0.045, 0.301], "block|light": [0.698, 0.064, 0.097, 0.0, 0.0, 0.141], "block|heavy": [0.0, 0.467, 0.28, 0.119, 0.133, 0.0], "block|parry": [0.0, 0.467, 0.28, 0.119, 0.133, 0.0], "block|grab": [0.0, 0.484, 0.201, 0.237, 0.045, 0.032], "block|dodge": [0.596, 0.215, 0.031, 0.0, 0.006, 0.152], "light|block": [0.0, 0.123, 0.233, 0.554, 0.089, 0.0], "light|light": [0.528, 0.0, 0.075, 0.316, 0.037, 0.044], "light|heavy": [0.0, 0.0, 0.32, 0.575, 0.105, 0.0], "light|parry": [0.0, 0.0, 0.32, 0.575, 0.105, 0.0], "light|grab": [0.326, 0.198, 0.068, 0.359, 0.049, 0.0], "light|dodge": [0.707, 0.148, 0.0, 0.0, 0.0, 0.145], "heavy|block": [0.469, 0.244, 0.0, 0.103, 0.0, 0.184], "heavy|light": [0.666, 0.2, 0.0, 0.0, 0.0, 0.135], "heavy|heavy": [0.0, 0.35, 0.139, 0.166, 0.045, 0.301], "heavy|parry": [0.0, 0.35, 0.139, 0.166, 0.045, 0.301], "heavy|grab": [0.469, 0.244, 0.0, 0.103, 0.0, 0.184], "heavy|dodge": [0.707, 0.148, 0.0, 0.0, 0.0, 0.145], "parry|block": [0.469, 0.244, 0.0, 0.103, 0.0, 0.184], "parry|light": [0.666, 0.2, 0.0, 0.0, 0.0, 0.135], "parry|heavy": [0.0, 0.35, 0.139, 0.166, 0.045, 0.301], "parry|parry": [0.0, 0.35, 0.139, 0.166, 0.045, 0.301], "parry|grab": [0.469, 0.244, 0.0, 0.103, 0.0, 0.184], "parry|dodge": [0.707, 0.148, 0.0, 0.0, 0.0, 0.145], "grab|block": [0.0, 0.307, 0.139, 0.233, 0.065, 0.256], "grab|light": [0.615, 0.107, 0.0, 0.081, 0.159, 0.039], "grab|heavy": [0.0, 0.467, 0.28, 0.119, 0.133, 0.0], "grab|parry": [0.0, 0.467, 0.28, 0.119, 0.133, 0.0], "grab|grab": [0.073, 0.185, 0.064, 0.389, 0.289, 0.0], "grab|dodge": [0.62, 0.206, 0.026, 0.0, 0.006, 0.142], "dodge|block": [0.0, 0.438, 0.07, 0.166, 0.069, 0.257], "dodge|light": [0.0, 0.589, 0.27, 0.0, 0.14, 0.0], "dodge|heavy": [0.0, 0.589, 0.27, 0.0, 0.14, 0.0], "dodge|parry": [0.0, 0.589, 0.27, 0.0, 0.14, 0.0], "dodge|grab": [0.0, 0.512, 0.075, 0.192, 0.075, 0.146], "dodge|dodge": [0.0, 0.634, 0.0, 0.0, 0.044, 0.322], "none|none": [0.0, 0.35, 0.139, 0.166, 0.045, 0.301]}, "Dagger|Short": {"block|block": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244], "block|light": [0.591, 0.071, 0.136, 0.0, 0.0, 0.203], "block|heavy": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244], "block|parry": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244], "block|grab": [0.582, 0.284, 0.116, 0.0, 0.018, 0.0], "block|dodge": [0.0, 0.393, 0.215, 0.0, 0.078, 0.314], "light|block": [0.0, 0.08, 0.199, 0.496, 0.079, 0.146], "light|light": [0.509, 0.0, 0.072, 0.364, 0.035, 0.021], "light|heavy": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244], "light|parry": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244], "light|grab": [0.433, 0.142, 0.032, 0.354, 0.039, 0.0], "light|dodge": [0.585, 0.204, 0.0, 0.0, 0.0, 0.212], "heavy|block": [0.357, 0.294, 0.0, 0.121, 0.0, 0.228], "heavy|light": [0.591, 0.071, 0.136, 0.0, 0.0, 0.203], "heavy|heavy": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244], "heavy|parry": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244], "heavy|grab": [0.357, 0.294, 0.0, 0.121, 0.0, 0.228], "heavy|dodge": [0.585, 0.204, 0.0, 0.0, 0.0, 0.212], "parry|block": [0.357, 0.294, 0.0, 0.121, 0.0, 0.228], "parry|light": [0.591, 0.071, 0.136, 0.0, 0.0, 0.203], "parry|heavy": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244], "parry|parry": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244], "parry|grab": [0.357, 0.294, 0.0, 0.121, 0.0, 0.228], "parry|dodge": [0.585, 0.204, 0.0, 0.0, 0.0, 0.212], "grab|block": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244], "grab|light": [0.076, 0.105, 0.0, 0.396, 0.398, 0.026], "grab|heavy": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244], "grab|parry": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244], "grab|grab": [0.62, 0.24, 0.095, 0.0, 0.046, 0.0], "grab|dodge": [0.0, 0.393, 0.215, 0.0, 0.078, 0.314], "dodge|block": [0.0, 0.608, 0.241, 0.0, 0.151, 0.0], "dodge|light": [0.0, 0.608, 0.241, 0.0, 0.151, 0.0], "dodge|heavy": [0.0, 0.608, 0.241, 0.0, 0.151, 0.0], "dodge|parry": [0.0, 0.608, 0.241, 0.0, 0.151, 0.0], "dodge|grab": [0.0, 0.646, 0.208, 0.0, 0.146, 0.0], "dodge|dodge": [0.0, 0.608, 0.241, 0.0, 0.151, 0.0], "none|none": [0.0, 0.329, 0.195, 0.129, 0.104, 0.244]}, "Dagger|Long": {"block|block": [0.0, 0.324, 0.196, 0.164, 0.106, 0.209], "block|light": [0.566, 0.0, 0.233, 0.0, 0.0, 0.2], "block|heavy": [0.0, 0.232, 0.561, 0.0, 0.207, 0.0], "block|parry": [0.0, 0.232, 0.561, 0.0, 0.207, 0.0], "block|grab": [0.531, 0.329, 0.123, 0.0, 0.016, 0.0], "block|dodge": [0.386, 0.276, 0.124, 0.0, 0.044, 0.171], "light|block": [0.367, 0.165, 0.025, 0.348, 0.039, 0.056], "light|light": [0.44, 0.0, 0.112, 0.364, 0.046, 0.039], "light|heavy": [0.0, 0.324, 0.196, 0.164, 0.106, 0.209], "light|parry": [0.0, 0.324, 0.196, 0.164, 0.106, 0.209], "light|grab": [0.378, 0.172, 0.028, 0.369, 0.042, 0.012], "light|dodge": [0.549, 0.239, 0.0, 0.0, 0.0, 0.212], "heavy|block": [0.28, 0.339, 0.0, 0.151, 0.0, 0.229], "heavy|light": [0.549, 0.091, 0.162, 0.0, 0.0, 0.198], "heavy|heavy": [0.0, 0.324, 0.196, 0.164, 0.106, 0.209], "heavy|parry": [0.0, 0.324, 0.196, 0.164, 0.106, 0.209], "heavy|grab": [0.28, 0.339, 0.0, 0.151, 0.0, 0.229], "heavy|dodge": [0.549, 0.239, 0.0, 0.0, 0.0, 0.212], "parry|block": [0.28, 0.339, 0.0, 0.151, 0.0, 0.229], "parry|light": [0.549, 0.091, 0.162, 0.0, 0.0, 0.198], "parry|heavy": [0.0, 0.324, 0.196, 0.164, 0.106, 0.209], "parry|parry": [0.0, 0.324, 0.196, 0.164, 0.106, 0.209], "parry|grab": [0.28, 0.339, 0.0, 0.151, 0.0, 0.229], "parry|dodge": [0.549, 0.239, 0.0, 0.0, 0.0, 0.212], "grab|block": [0.0, 0.324, 0.196, 0.164, 0.106, 0.209], "grab|light": [0.0, 0.0, 0.139, 0.427, 0.36, 0.074], "grab|heavy": [0.0, 0.232, 0.561, 0.0, 0.207, 0.0], "grab|parry": [0.0, 0.232, 0.561, 0.0, 0.207, 0.0], "grab|grab": [0.566, 0.267, 0.091, 0.0, 0.076, 0.0], "grab|dodge": [0.474, 0.246, 0.1, 0.0, 0.037, 0.143], "dodge|block": [0.0, 0.469, 0.169, 0.0, 0.116, 0.246], "dodge|light": [0.0, 0.495, 0.334, 0.0, 0.171, 0.0], "dodge|heavy": [0.0, 0.232, 0.561, 0.0, 0.207, 0.0], "dodge|parry": [0.0, 0.232, 0.561, 0.0, 0.207, 0.0], "dodge|grab": [0.0, 0.662, 0.19, 0.0, 0.148, 0.0], "dodge|dodge": [0.0, 0.469, 0.169, 0.0, 0.116, 0.246], "none|none": [0.0, 0.324, 0.196, 0.164, 0.106, 0.209]}, "Dagger|Battle": {"block|block": [0.0, 0.327, 0.206, 0.183, 0.082, 0.202], "block|light": [0.533, 0.0, 0.266, 0.0, 0.0, 0.201], "block|heavy": [0.0, 0.0, 0.748, 0.0, 0.252, 0.0], "block|parry": [0.0, 0.0, 0.748, 0.0, 0.252, 0.0], "block|grab": [0.515, 0.357, 0.128, 0.0, 0.0, 0.0], "block|dodge": [0.0, 0.421, 0.247, 0.0, 0.044, 0.287], "light|block": [0.0, 0.0, 0.217, 0.613, 0.089, 0.08], "light|light": [0.365, 0.009, 0.104, 0.442, 0.056, 0.025], "light|heavy": [0.0, 0.269, 0.181, 0.295, 0.105, 0.15], "light|parry": [0.0, 0.269, 0.181, 0.295, 0.105, 0.15], "light|grab": [0.341, 0.154, 0.022, 0.436, 0.048, 0.0], "light|dodge": [0.484, 0.322, 0.0, 0.0, 0.0, 0.194], "heavy|block": [0.0, 0.402, 0.129, 0.198, 0.0, 0.271], "heavy|light": [0.508, 0.151, 0.145, 0.0, 0.0, 0.196], "heavy|heavy": [0.0, 0.327, 0.206, 0.183, 0.082, 0.202], "heavy|parry": [0.0, 0.327, 0.206, 0.183, 0.082, 0.202], "heavy|grab": [0.461, 0.333, 0.0, 0.011, 0.0, 0.194], "heavy|dodge": [0.484, 0.322, 0.0, 0.0, 0.0, 0.194], "parry|block": [0.0, 0.402, 0.129, 0.198, 0.0, 0.271], "parry|light": [0.508, 0.151, 0.145, 0.0, 0.0, 0.196], "parry|heavy": [0.0, 0.327, 0.206, 0.183, 0.082, 0.202], "parry|parry": [0.0, 0.327, 0.206, 0.183, 0.082, 0.202], "parry|grab": [0.461, 0.333, 0.0, 0.011, 0.0, 0.194], "parry|dodge": [0.484, 0.322, 0.0, 0.0, 0.0, 0.194], "grab|block": [0.0, 0.273, 0.183, 0.287, 0.104, 0.153], "grab|light": [0.549, 0.0, 0.192, 0.0, 0.148, 0.111], "grab|heavy": [0.0, 0.0, 0.748, 0.0, 0.252, 0.0], "grab|parry": [0.0, 0.0, 0.748, 0.0, 0.252, 0.0], "grab|grab": [0.0, 0.222, 0.061, 0.387, 0.33, 0.0], "grab|dodge": [0.0, 0.421, 0.247, 0.0, 0.044, 0.287], "dodge|block": [0.0, 0.519, 0.147, 0.0, 0.12, 0.214], "dodge|light": [0.0, 0.525, 0.302, 0.0, 0.173, 0.0], "dodge|heavy": [0.0, 0.0, 0.748, 0.0, 0.252, 0.0], "dodge|parry": [0.0, 0.0, 0.748, 0.0, 0.252, 0.0], "dodge|grab": [0.0, 0.684, 0.167, 0.0, 0.149, 0.0], "dodge|dodge": [0.0, 0.519, 0.147, 0.0, 0.12, 0.214], "none|none": [0.0, 0.327, 0.206, 0.183, 0.082, 0.202]}, "Dagger|Great": {"block|block": [0.0, 0.32, 0.234, 0.232, 0.017, 0.197], "block|light": [0.506, 0.0, 0.293, 0.0, 0.0, 0.202], "block|heavy": [0.0, 0.0, 0.74, 0.0, 0.26, 0.0], "block|parry": [0.0, 0.0, 0.74, 0.0, 0.26, 0.0], "block|grab": [0.487, 0.383, 0.129, 0.0, 0.0, 0.0], "block|dodge": [0.0, 0.436, 0.275, 0.0, 0.0, 0.289], "light|block": [0.0, 0.136, 0.144, 0.586, 0.085, 0.048], "light|light": [0.32, 0.0, 0.082, 0.568, 0.03, 0.0], "light|heavy": [0.0, 0.136, 0.144, 0.586, 0.085, 0.048], "light|parry": [0.0, 0.136, 0.144, 0.586, 0.085, 0.048], "light|grab": [0.36, 0.113, 0.0, 0.516, 0.011, 0.0], "light|dodge": [0.0, 0.436, 0.275, 0.0, 0.0, 0.289], "heavy|block": [0.0, 0.32, 0.234, 0.232, 0.017, 0.197], "heavy|light": [0.478, 0.204, 0.127, 0.0, 0.0, 0.191], "heavy|heavy": [0.0, 0.32, 0.234, 0.232, 0.017, 0.197], "heavy|parry": [0.0, 0.32, 0.234, 0.232, 0.017, 0.197], "heavy|grab": [0.487, 0.383, 0.129, 0.0, 0.0, 0.0], "heavy|dodge": [0.0, 0.436, 0.275, 0.0, 0.0, 0.289], "parry|block": [0.0, 0.32, 0.234, 0.232, 0.017, 0.197], "parry|light": [0.478, 0.204, 0.127, 0.0, 0.0, 0.191], "parry|heavy": [0.0, 0.32, 0.234, 0.232, 0.017, 0.197], "parry|parry": [0.0, 0.32, 0.234, 0.232, 0.017, 0.197], "parry|grab": [0.487, 0.383, 0.129, 0.0, 0.0, 0.0], "parry|dodge": [0.0, 0.436, 0.275, 0.0, 0.0, 0.289], "grab|block": [0.0, 0.309, 0.228, 0.252, 0.021, 0.189], "grab|light": [0.0, 0.0, 0.166, 0.379, 0.368, 0.087], "grab|heavy": [0.0, 0.0, 0.74, 0.0, 0.26, 0.0], "grab|parry": [0.0, 0.0, 0.74, 0.0, 0.26, 0.0], "grab|grab": [0.0, 0.27, 0.087, 0.364, 0.278, 0.0], "grab|dodge": [0.0, 0.436, 0.275, 0.0, 0.0, 0.289], "dodge|block": [0.0, 0.724, 0.158, 0.0, 0.118, 0.0], "dodge|light": [0.0, 0.588, 0.267, 0.0, 0.144, 0.0], "dodge|heavy": [0.0, 0.0, 0.74, 0.0, 0.26, 0.0], "dodge|parry": [0.0, 0.0, 0.74, 0.0, 0.26, 0.0], "dodge|grab": [0.0, 0.743, 0.143, 0.0, 0.114, 0.0], "dodge|dodge": [0.0, 0.724, 0.158, 0.0, 0.118, 0.0], "none|none": [0.0, 0.32, 0.234, 0.232, 0.017, 0.197]}, "Short|Dagger": {"block|block": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163], "block|light": [0.658, 0.097, 0.081, 0.0, 0.046, 0.119], "block|heavy": [0.0, 0.386, 0.253, 0.208, 0.153, 0.0], "block|parry": [0.0, 0.386, 0.253, 0.208, 0.153, 0.0], "block|grab": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163], "block|dodge": [0.776, 0.127, 0.0, 0.0, 0.0, 0.097], "light|block": [0.0, 0.126, 0.207, 0.557, 0.11, 0.0], "light|light": [0.453, 0.0, 0.08, 0.367, 0.044, 0.056], "light|heavy": [0.0, 0.126, 0.207, 0.557, 0.11, 0.0], "light|parry": [0.0, 0.126, 0.207, 0.557, 0.11, 0.0], "light|grab": [0.301, 0.208, 0.076, 0.355, 0.061, 0.0], "light|dodge": [0.776, 0.127, 0.0, 0.0, 0.0, 0.097], "heavy|block": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163], "heavy|light": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163], "heavy|heavy": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163], "heavy|parry": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163], "heavy|grab": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163], "heavy|dodge": [0.776, 0.127, 0.0, 0.0, 0.0, 0.097], "parry|block": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163], "parry|light": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163], "parry|heavy": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163], "parry|parry": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163], "parry|grab": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163], "parry|dodge": [0.776, 0.127, 0.0, 0.0, 0.0, 0.097], "grab|block": [0.0, 0.0, 0.068, 0.459, 0.427, 0.046], "grab|light": [0.383, 0.0, 0.086, 0.272, 0.201, 0.059], "grab|heavy": [0.0, 0.386, 0.253, 0.208, 0.153, 0.0], "grab|parry": [0.0, 0.386, 0.253, 0.208, 0.153, 0.0], "grab|grab": [0.0, 0.115, 0.041, 0.481, 0.364, 0.0], "grab|dodge": [0.895, 0.0, 0.0, 0.0, 0.094, 0.011], "dodge|block": [0.0, 0.417, 0.0, 0.299, 0.023, 0.261], "dodge|light": [0.0, 0.599, 0.236, 0.0, 0.165, 0.0], "dodge|heavy": [0.0, 0.599, 0.236, 0.0, 0.165, 0.0], "dodge|parry": [0.0, 0.599, 0.236, 0.0, 0.165, 0.0], "dodge|grab": [0.0, 0.417, 0.0, 0.299, 0.023, 0.261], "dodge|dodge": [0.776, 0.127, 0.0, 0.0, 0.0, 0.097], "none|none": [0.464, 0.244, 0.0, 0.121, 0.009, 0.163]}, "Short|Short": {"block|block": [0.0, 0.353, 0.131, 0.166, 0.056, 0.294], "block|light": [0.622, 0.072, 0.125, 0.0, 0.0, 0.182], "block|heavy": [0.0, 0.379, 0.242, 0.224, 0.155, 0.0], "block|parry": [0.0, 0.379, 0.242, 0.224, 0.155, 0.0], "block|grab": [0.0, 0.478, 0.188, 0.234, 0.056, 0.044], "block|dodge": [0.503, 0.259, 0.04, 0.0, 0.01, 0.188], "light|block": [0.0, 0.109, 0.204, 0.574, 0.114, 0.0], "light|light": [0.444, 0.0, 0.074, 0.397, 0.051, 0.034], "light|heavy": [0.0, 0.0, 0.272, 0.597, 0.131, 0.0], "light|parry": [0.0, 0.0, 0.272, 0.597, 0.131, 0.0], "light|grab": [0.349, 0.18, 0.054, 0.357, 0.06, 0.0], "light|dodge": [0.625, 0.189, 0.0, 0.0, 0.0, 0.186], "heavy|block": [0.0, 0.373, 0.062, 0.25, 0.0, 0.315], "heavy|light": [0.585, 0.244, 0.0, 0.0, 0.0, 0.171], "heavy|heavy": [0.0, 0.353, 0.131, 0.166, 0.056, 0.294], "heavy|parry": [0.0, 0.353, 0.131, 0.166, 0.056, 0.294], "heavy|grab": [0.393, 0.28, 0.0, 0.116, 0.0, 0.212], "heavy|dodge": [0.625, 0.189, 0.0, 0.0, 0.0, 0.186], "parry|block": [0.0, 0.373, 0.062, 0.25, 0.0, 0.315], "parry|light": [0.585, 0.244, 0.0, 0.0, 0.0, 0.171], "parry|heavy": [0.0, 0.353, 0.131, 0.166, 0.056, 0.294], "parry|parry": [0.0, 0.353, 0.131, 0.166, 0.056, 0.294], "parry|grab": [0.393, 0.28, 0.0, 0.116, 0.0, 0.212], "parry|dodge": [0.625, 0.189, 0.0, 0.0, 0.0, 0.186], "grab|block": [0.0, 0.301, 0.131, 0.249, 0.08, 0.24], "grab|light": [0.479, 0.117, 0.0, 0.139, 0.222, 0.042], "grab|heavy": [0.0, 0.373, 0.24, 0.232, 0.156, 0.0], "grab|parry": [0.0, 0.373, 0.24, 0.232, 0.156, 0.0], "grab|grab": [0.045, 0.169, 0.051, 0.417, 0.318, 0.0], "grab|dodge": [0.535, 0.246, 0.034, 0.0, 0.01, 0.175], "dodge|block": [0.0, 0.459, 0.048, 0.166, 0.085, 0.242], "dodge|light": [0.0, 0.609, 0.219, 0.0, 0.172, 0.0], "dodge|heavy": [0.0, 0.609, 0.219, 0.0, 0.172, 0.0], "dodge|parry": [0.0, 0.609, 0.219, 0.0, 0.172, 0.0], "dodge|grab": [0.0, 0.509, 0.049, 0.184, 0.09, 0.168], "dodge|dodge": [0.0, 0.626, 0.0, 0.0, 0.054, 0.321], "none|none": [0.0, 0.353, 0.131, 0.166, 0.056, 0.294]}, "Short|Long": {"block|block": [0.0, 0.31, 0.182, 0.168, 0.12, 0.22], "block|light": [0.549, 0.077, 0.15, 0.0, 0.0, 0.225], "block|heavy": [0.0, 0.31, 0.182, 0.168, 0.12, 0.22], "block|parry": [0.0, 0.31, 0.182, 0.168, 0.12, 0.22], "block|grab": [0.526, 0.316, 0.127, 0.0, 0.031, 0.0], "block|dodge": [0.0, 0.393, 0.207, 0.0, 0.086, 0.313], "light|block": [0.0, 0.07, 0.181, 0.533, 0.106, 0.11], "light|light": [0.45, 0.0, 0.073, 0.415, 0.052, 0.01], "light|heavy": [0.0, 0.292, 0.176, 0.205, 0.127, 0.199], "light|parry": [0.0, 0.292, 0.176, 0.205, 0.127, 0.199], "light|grab": [0.4, 0.139, 0.025, 0.388, 0.049, 0.0], "light|dodge": [0.541, 0.225, 0.0, 0.0, 0.0, 0.234], "heavy|block": [0.0, 0.387, 0.05, 0.266, 0.0, 0.297], "heavy|light": [0.549, 0.077, 0.15, 0.0, 0.0, 0.225], "heavy|heavy": [0.0, 0.31, 0.182, 0.168, 0.12, 0.22], "heavy|parry": [0.0, 0.31, 0.182, 0.168, 0.12, 0.22], "heavy|grab": [0.316, 0.311, 0.0, 0.131, 0.0, 0.241], "heavy|dodge": [0.541, 0.225, 0.0, 0.0, 0.0, 0.234], "parry|block": [0.0, 0.387, 0.05, 0.266, 0.0, 0.297], "parry|light": [0.549, 0.077, 0.15, 0.0, 0.0, 0.225], "parry|heavy": [0.0, 0.31, 0.182, 0.168, 0.12, 0.22], "parry|parry": [0.0, 0.31, 0.182, 0.168, 0.12, 0.22], "parry|grab": [0.316, 0.311, 0.0, 0.131, 0.0, 0.241], "parry|dodge": [0.541, 0.225, 0.0, 0.0, 0.0, 0.234], "grab|block": [0.0, 0.292, 0.176, 0.205, 0.127, 0.199], "grab|light": [0.085, 0.107, 0.0, 0.394, 0.393, 0.02], "grab|heavy": [0.0, 0.292, 0.176, 0.205, 0.127, 0.199], "grab|parry": [0.0, 0.292, 0.176, 0.205, 0.127, 0.199], "grab|grab": [0.581, 0.264, 0.102, 0.0, 0.053, 0.0], "grab|dodge": [0.0, 0.393, 0.207, 0.0, 0.086, 0.313], "dodge|block": [0.0, 0.624, 0.197, 0.0, 0.179, 0.0], "dodge|light": [0.0, 0.624, 0.197, 0.0, 0.179, 0.0], "dodge|heavy": [0.0, 0.624, 0.197, 0.0, 0.179, 0.0], "dodge|parry": [0.0, 0.624, 0.197, 0.0, 0.179, 0.0], "dodge|grab": [0.0, 0.637, 0.186, 0.0, 0.177, 0.0], "dodge|dodge": [0.0, 0.624, 0.197, 0.0, 0.179, 0.0], "none|none": [0.0, 0.31, 0.182, 0.168, 0.12, 0.22]}, "Short|Battle": {"block|block": [0.0, 0.324, 0.185, 0.159, 0.125, 0.207], "block|light": [0.543, 0.0, 0.244, 0.0, 0.0, 0.213], "block|heavy": [0.0, 0.36, 0.398, 0.0, 0.242, 0.0], "block|parry": [0.0, 0.36, 0.398, 0.0, 0.242, 0.0], "block|grab": [0.475, 0.353, 0.13, 0.0, 0.041, 0.0], "block|dodge": [0.0, 0.404, 0.214, 0.0, 0.092, 0.29], "light|block": [0.0, 0.082, 0.17, 0.54, 0.11, 0.099], "light|light": [0.387, 0.004, 0.108, 0.399, 0.071, 0.031], "light|heavy": [0.0, 0.296, 0.175, 0.216, 0.136, 0.178], "light|parry": [0.0, 0.296, 0.175, 0.216, 0.136, 0.178], "light|grab": [0.396, 0.156, 0.002, 0.363, 0.046, 0.036], "light|dodge": [0.544, 0.223, 0.0, 0.0, 0.0, 0.234], "heavy|block": [0.0, 0.402, 0.048, 0.267, 0.0, 0.283], "heavy|light": [0.518, 0.131, 0.142, 0.0, 0.0, 0.209], "heavy|heavy": [0.0, 0.324, 0.185, 0.159, 0.125, 0.207], "heavy|parry": [0.0, 0.324, 0.185, 0.159, 0.125, 0.207], "heavy|grab": [0.223, 0.354, 0.0, 0.184, 0.0, 0.24], "heavy|dodge": [0.544, 0.223, 0.0, 0.0, 0.0, 0.234], "parry|block": [0.0, 0.402, 0.048, 0.267, 0.0, 0.283], "parry|light": [0.518, 0.131, 0.142, 0.0, 0.0, 0.209], "parry|heavy": [0.0, 0.324, 0.185, 0.159, 0.125, 0.207], "parry|parry": [0.0, 0.324, 0.185, 0.159, 0.125, 0.207], "parry|grab": [0.223, 0.354, 0.0, 0.184, 0.0, 0.24], "parry|dodge": [0.544, 0.223, 0.0, 0.0, 0.0, 0.234], "grab|block": [0.0, 0.296, 0.175, 0.216, 0.136, 0.178], "grab|light": [0.0, 0.0, 0.131, 0.441, 0.37, 0.058], "grab|heavy": [0.0, 0.36, 0.398, 0.0, 0.242, 0.0], "grab|parry": [0.0, 0.36, 0.398, 0.0, 0.242, 0.0], "grab|grab": [0.108, 0.188, 0.04, 0.344, 0.32, 0.0], "grab|dodge": [0.0, 0.404, 0.214, 0.0, 0.092, 0.29], "dodge|block": [0.0, 0.48, 0.143, 0.0, 0.145, 0.231], "dodge|light": [0.0, 0.482, 0.301, 0.0, 0.218, 0.0], "dodge|heavy": [0.0, 0.36, 0.398, 0.0, 0.242, 0.0], "dodge|parry": [0.0, 0.36, 0.398, 0.0, 0.242, 0.0], "dodge|grab": [0.0, 0.642, 0.173, 0.0, 0.185, 0.0], "dodge|dodge": [0.0, 0.48, 0.143, 0.0, 0.145, 0.231], "none|none": [0.0, 0.324, 0.185, 0.159, 0.125, 0.207]}, "Short|Great": {"block|block": [0.0, 0.332, 0.192, 0.173, 0.104, 0.2], "block|light": [0.527, 0.0, 0.276, 0.0, 0.0, 0.197], "block|heavy": [0.0, 0.0, 0.673, 0.0, 0.327, 0.0], "block|parry": [0.0, 0.0, 0.673, 0.0, 0.327, 0.0], "block|grab": [0.467, 0.377, 0.128, 0.0, 0.029, 0.0], "block|dodge": [0.0, 0.423, 0.226, 0.0, 0.069, 0.282], "light|block": [0.0, 0.0, 0.191, 0.63, 0.126, 0.053], "light|light": [0.272, 0.0, 0.111, 0.513, 0.087, 0.018], "light|heavy": [0.0, 0.251, 0.161, 0.327, 0.134, 0.126], "light|parry": [0.0, 0.251, 0.161, 0.327, 0.134, 0.126], "light|grab": [0.314, 0.175, 0.025, 0.418, 0.068, 0.0], "light|dodge": [0.378, 0.39, 0.0, 0.0, 0.0, 0.232], "heavy|block": [0.0, 0.4, 0.13, 0.203, 0.0, 0.266], "heavy|light": [0.495, 0.195, 0.12, 0.0, 0.0, 0.19], "heavy|heavy": [0.0, 0.332, 0.192, 0.173, 0.104, 0.2], "heavy|parry": [0.0, 0.332, 0.192, 0.173, 0.104, 0.2], "heavy|grab": [0.396, 0.354, 0.0, 0.052, 0.0, 0.198], "heavy|dodge": [0.378, 0.39, 0.0, 0.0, 0.0, 0.232], "parry|block": [0.0, 0.4, 0.13, 0.203, 0.0, 0.266], "parry|light": [0.495, 0.195, 0.12, 0.0, 0.0, 0.19], "parry|heavy": [0.0, 0.332, 0.192, 0.173, 0.104, 0.2], "parry|parry": [0.0, 0.332, 0.192, 0.173, 0.104, 0.2], "parry|grab": [0.396, 0.354, 0.0, 0.052, 0.0, 0.198], "parry|dodge": [0.378, 0.39, 0.0, 0.0, 0.0, 0.232], "grab|block": [0.0, 0.263, 0.165, 0.305, 0.13, 0.137], "grab|light": [0.0, 0.0, 0.131, 0.423, 0.404, 0.041], "grab|heavy": [0.0, 0.0, 0.673, 0.0, 0.327, 0.0], "grab|parry": [0.0, 0.0, 0.673, 0.0, 0.327, 0.0], "grab|grab": [0.0, 0.205, 0.044, 0.403, 0.348, 0.0], "grab|dodge": [0.0, 0.423, 0.226, 0.0, 0.069, 0.282], "dodge|block": [0.0, 0.664, 0.157, 0.0, 0.179, 0.0], "dodge|light": [0.0, 0.506, 0.28, 0.0, 0.214, 0.0], "dodge|heavy": [0.0, 0.0, 0.673, 0.0, 0.327, 0.0], "dodge|parry": [0.0, 0.0, 0.673, 0.0, 0.327, 0.0], "dodge|grab": [0.0, 0.665, 0.156, 0.0, 0.179, 0.0], "dodge|dodge": [0.0, 0.664, 0.157, 0.0, 0.179, 0.0], "none|none": [0.0, 0.332, 0.192, 0.173, 0.104, 0.2]}, "Long|Dagger": {"block|block": [0.448, 0.238, 0.0, 0.125, 0.026, 0.163], "block|light": [0.649, 0.098, 0.074, 0.006, 0.057, 0.116], "block|heavy": [0.0, 0.459, 0.257, 0.111, 0.174, 0.0], "block|parry": [0.0, 0.459, 0.257, 0.111, 0.174, 0.0], "block|grab": [0.448, 0.238, 0.0, 0.125, 0.026, 0.163], "block|dodge": [0.788, 0.112, 0.0, 0.0, 0.007, 0.093], "light|block": [0.0, 0.0, 0.235, 0.643, 0.122, 0.0], "light|light": [0.437, 0.0, 0.098, 0.34, 0.058, 0.068], "light|heavy": [0.0, 0.128, 0.227, 0.515, 0.13, 0.0], "light|parry": [0.0, 0.128, 0.227, 0.515, 0.13, 0.0], "light|grab": [0.0, 0.313, 0.129, 0.474, 0.085, 0.0], "light|dodge": [0.857, 0.0, 0.0, 0.127, 0.0, 0.017], "heavy|block": [0.433, 0.283, 0.0, 0.0, 0.0, 0.283], "heavy|light": [0.448, 0.238, 0.0, 0.125, 0.026, 0.163], "heavy|heavy": [0.448, 0.238, 0.0, 0.125, 0.026, 0.163], "heavy|parry": [0.448, 0.238, 0.0, 0.125, 0.026, 0.163], "heavy|grab": [0.433, 0.283, 0.0, 0.0, 0.0, 0.283], "heavy|dodge": [0.433, 0.283, 0.0, 0.0, 0.0, 0.283], "parry|block": [0.433, 0.283, 0.0, 0.0, 0.0, 0.283], "parry|light": [0.448, 0.238, 0.0, 0.125, 0.026, 0.163], "parry|heavy": [0.448, 0.238, 0.0, 0.125, 0.026, 0.163], "parry|parry": [0.448, 0.238, 0.0, 0.125, 0.026, 0.163], "parry|grab": [0.433, 0.283, 0.0, 0.0, 0.0, 0.283], "parry|dodge": [0.433, 0.283, 0.0, 0.0, 0.0, 0.283], "grab|block": [0.0, 0.0, 0.122, 0.417, 0.381, 0.08], "grab|light": [0.596, 0.018, 0.104, 0.132, 0.065, 0.084], "grab|heavy": [0.0, 0.459, 0.257, 0.111, 0.174, 0.0], "grab|parry": [0.0, 0.459, 0.257, 0.111, 0.174, 0.0], "grab|grab": [0.0, 0.211, 0.08, 0.446, 0.262, 0.0], "grab|dodge": [0.918, 0.0, 0.0, 0.0, 0.081, 0.001], "dodge|block": [0.0, 0.393, 0.012, 0.28, 0.047, 0.268], "dodge|light": [0.0, 0.576, 0.246, 0.0, 0.179, 0.0], "dodge|heavy": [0.0, 0.576, 0.246, 0.0, 0.179, 0.0], "dodge|parry": [0.0, 0.576, 0.246, 0.0, 0.179, 0.0], "dodge|grab": [0.0, 0.404, 0.01, 0.289, 0.046, 0.25], "dodge|dodge": [0.788, 0.112, 0.0, 0.0, 0.007, 0.093], "none|none": [0.448, 0.238, 0.0, 0.125, 0.026, 0.163]}, "Long|Short": {"block|block": [0.0, 0.362, 0.064, 0.242, 0.012, 0.32], "block|light": [0.586, 0.095, 0.112, 0.0, 0.045, 0.163], "block|heavy": [0.0, 0.364, 0.242, 0.232, 0.162, 0.0], "block|parry": [0.0, 0.364, 0.242, 0.232, 0.162, 0.0], "block|grab": [0.401, 0.276, 0.0, 0.124, 0.008, 0.191], "block|dodge": [0.678, 0.176, 0.0, 0.0, 0.0, 0.146], "light|block": [0.0, 0.12, 0.182, 0.57, 0.127, 0.0], "light|light": [0.405, 0.0, 0.066, 0.44, 0.055, 0.035], "light|heavy": [0.0, 0.12, 0.182, 0.57, 0.127, 0.0], "light|parry": [0.0, 0.12, 0.182, 0.57, 0.127, 0.0], "light|grab": [0.344, 0.187, 0.06, 0.339, 0.07, 0.0], "light|dodge": [0.678, 0.176, 0.0, 0.0, 0.0, 0.146], "heavy|block": [0.0, 0.362, 0.064, 0.242, 0.012, 0.32], "heavy|light": [0.401, 0.276, 0.0, 0.124, 0.008, 0.191], "heavy|heavy": [0.0, 0.362, 0.064, 0.242, 0.012, 0.32], "heavy|parry": [0.0, 0.362, 0.064, 0.242, 0.012, 0.32], "heavy|grab": [0.401, 0.276, 0.0, 0.124, 0.008, 0.191], "heavy|dodge": [0.678, 0.176, 0.0, 0.0, 0.0, 0.146], "parry|block": [0.0, 0.362, 0.064, 0.242, 0.012, 0.32], "parry|light": [0.401, 0.276, 0.0, 0.124, 0.008, 0.191], "parry|heavy": [0.0, 0.362, 0.064, 0.242, 0.012, 0.32], "parry|parry": [0.0, 0.362, 0.064, 0.242, 0.012, 0.32], "parry|grab": [0.401, 0.276, 0.0, 0.124, 0.008, 0.191], "parry|dodge": [0.678, 0.176, 0.0, 0.0, 0.0, 0.146], "grab|block": [0.0, 0.0, 0.055, 0.476, 0.441, 0.028], "grab|light": [0.239, 0.0, 0.066, 0.361, 0.3, 0.034], "grab|heavy": [0.0, 0.298, 0.226, 0.307, 0.168, 0.0], "grab|parry": [0.0, 0.298, 0.226, 0.307, 0.168, 0.0], "grab|grab": [0.0, 0.103, 0.032, 0.488, 0.377, 0.0], "grab|dodge": [0.826, 0.0, 0.0, 0.0, 0.14, 0.034], "dodge|block": [0.0, 0.416, 0.0, 0.296, 0.03, 0.258], "dodge|light": [0.0, 0.611, 0.201, 0.0, 0.187, 0.0], "dodge|heavy": [0.0, 0.611, 0.201, 0.0, 0.187, 0.0], "dodge|parry": [0.0, 0.611, 0.201, 0.0, 0.187, 0.0], "dodge|grab": [0.0, 0.416, 0.0, 0.296, 0.03, 0.258], "dodge|dodge": [0.678, 0.176, 0.0, 0.0, 0.0, 0.146], "none|none": [0.0, 0.362, 0.064, 0.242, 0.012, 0.32]}, "Long|Long": {"block|block": [0.0, 0.355, 0.126, 0.167, 0.062, 0.289], "block|light": [0.575, 0.073, 0.143, 0.0, 0.0, 0.209], "block|heavy": [0.0, 0.382, 0.236, 0.222, 0.16, 0.0], "block|parry": [0.0, 0.382, 0.236, 0.222, 0.16, 0.0], "block|grab": [0.0, 0.474, 0.179, 0.233, 0.062, 0.051], "block|dodge": [0.449, 0.283, 0.046, 0.0, 0.013, 0.21], "light|block": [0.0, 0.098, 0.182, 0.589, 0.131, 0.0], "light|light": [0.4, 0.0, 0.066, 0.454, 0.06, 0.02], "light|heavy": [0.0, 0.0, 0.238, 0.613, 0.149, 0.0], "light|parry": [0.0, 0.0, 0.238, 0.613, 0.149, 0.0], "light|grab": [0.373, 0.166, 0.045, 0.352, 0.065, 0.0], "light|dodge": [0.574, 0.214, 0.0, 0.0, 0.0, 0.212], "heavy|block": [0.0, 0.375, 0.06, 0.256, 0.0, 0.31], "heavy|light": [0.537, 0.268, 0.0, 0.0, 0.0, 0.195], "heavy|heavy": [0.0, 0.355, 0.126, 0.167, 0.062, 0.289], "heavy|parry": [0.0, 0.355, 0.126, 0.167, 0.062, 0.289], "heavy|grab": [0.354, 0.298, 0.0, 0.121, 0.0, 0.227], "heavy|dodge": [0.574, 0.214, 0.0, 0.0, 0.0, 0.212], "parry|block": [0.0, 0.375, 0.06, 0.256, 0.0, 0.31], "parry|light": [0.537, 0.268, 0.0, 0.0, 0.0, 0.195], "parry|heavy": [0.0, 0.355, 0.126, 0.167, 0.062, 0.289], "parry|parry": [0.0, 0.355, 0.126, 0.167, 0.062, 0.289], "parry|grab": [0.354, 0.298, 0.0, 0.121, 0.0, 0.227], "parry|dodge": [0.574, 0.214, 0.0, 0.0, 0.0, 0.212], "grab|block": [0.0, 0.297, 0.126, 0.259, 0.088, 0.23], "grab|light": [0.0, 0.015, 0.054, 0.503, 0.407, 0.021], "grab|heavy": [0.0, 0.312, 0.214, 0.305, 0.17, 0.0], "grab|parry": [0.0, 0.312, 0.214, 0.305, 0.17, 0.0], "grab|grab": [0.032, 0.149, 0.039, 0.438, 0.343, 0.0], "grab|dodge": [0.484, 0.269, 0.039, 0.0, 0.012, 0.195], "dodge|block": [0.0, 0.473, 0.034, 0.167, 0.095, 0.232], "dodge|light": [0.0, 0.621, 0.189, 0.0, 0.19, 0.0], "dodge|heavy": [0.0, 0.621, 0.189, 0.0, 0.19, 0.0], "dodge|parry": [0.0, 0.621, 0.189, 0.0, 0.19, 0.0], "dodge|grab": [0.0, 0.508, 0.033, 0.179, 0.099, 0.181], "dodge|dodge": [0.0, 0.621, 0.0, 0.0, 0.06, 0.319], "none|none": [0.0, 0.355, 0.126, 0.167, 0.062, 0.289]}, "Long|Battle": {"block|block": [0.0, 0.311, 0.175, 0.161, 0.131, 0.221], "block|light": [0.514, 0.112, 0.134, 0.0, 0.0, 0.24], "block|heavy": [0.0, 0.311, 0.175, 0.161, 0.131, 0.221], "block|parry": [0.0, 0.311, 0.175, 0.161, 0.131, 0.221], "block|grab": [0.466, 0.34, 0.137, 0.008, 0.049, 0.0], "block|dodge": [0.0, 0.391, 0.199, 0.0, 0.098, 0.312], "light|block": [0.0, 0.066, 0.16, 0.559, 0.134, 0.08], "light|light": [0.399, 0.0, 0.07, 0.458, 0.072, 0.001], "light|heavy": [0.0, 0.26, 0.16, 0.265, 0.152, 0.163], "light|parry": [0.0, 0.26, 0.16, 0.265, 0.152, 0.163], "light|grab": [0.367, 0.133, 0.02, 0.417, 0.064, 0.0], "light|dodge": [0.527, 0.213, 0.0, 0.0, 0.0, 0.26], "heavy|block": [0.0, 0.385, 0.049, 0.269, 0.0, 0.296], "heavy|light": [0.514, 0.112, 0.134, 0.0, 0.0, 0.24], "heavy|heavy": [0.0, 0.311, 0.175, 0.161, 0.131, 0.221], "heavy|parry": [0.0, 0.311, 0.175, 0.161, 0.131, 0.221], "heavy|grab": [0.249, 0.328, 0.0, 0.168, 0.0, 0.255], "heavy|dodge": [0.527, 0.213, 0.0, 0.0, 0.0, 0.26], "parry|block": [0.0, 0.385, 0.049, 0.269, 0.0, 0.296], "parry|light": [0.514, 0.112, 0.134, 0.0, 0.0, 0.24], "parry|heavy": [0.0, 0.311, 0.175, 0.161, 0.131, 0.221], "parry|parry": [0.0, 0.311, 0.175, 0.161, 0.131, 0.221], "parry|grab": [0.249, 0.328, 0.0, 0.168, 0.0, 0.255], "parry|dodge": [0.527, 0.213, 0.0, 0.0, 0.0, 0.26], "grab|block": [0.0, 0.26, 0.16, 0.265, 0.152, 0.163], "grab|light": [0.0, 0.083, 0.023, 0.468, 0.41, 0.016], "grab|heavy": [0.0, 0.26, 0.16, 0.265, 0.152, 0.163], "grab|parry": [0.0, 0.26, 0.16, 0.265, 0.152, 0.163], "grab|grab": [0.078, 0.125, 0.015, 0.404, 0.378, 0.0], "grab|dodge": [0.0, 0.391, 0.199, 0.0, 0.098, 0.312], "dodge|block": [0.0, 0.629, 0.165, 0.0, 0.205, 0.0], "dodge|light": [0.0, 0.629, 0.165, 0.0, 0.205, 0.0], "dodge|heavy": [0.0, 0.629, 0.165, 0.0, 0.205, 0.0], "dodge|parry": [0.0, 0.629, 0.165, 0.0, 0.205, 0.0], "dodge|grab": [0.0, 0.629, 0.165, 0.0, 0.205, 0.0], "dodge|dodge": [0.0, 0.629, 0.165, 0.0, 0.205, 0.0], "none|none": [0.0, 0.311, 0.175, 0.161, 0.131, 0.221]}, "Long|Great": {"block|block": [0.0, 0.325, 0.178, 0.152, 0.136, 0.209], "block|light": [0.524, 0.0, 0.251, 0.0, 0.0, 0.225], "block|heavy": [0.0, 0.388, 0.323, 0.029, 0.26, 0.0], "block|parry": [0.0, 0.388, 0.323, 0.029, 0.26, 0.0], "block|grab": [0.421, 0.371, 0.136, 0.013, 0.059, 0.0], "block|dodge": [0.0, 0.401, 0.205, 0.0, 0.105, 0.289], "light|block": [0.0, 0.078, 0.152, 0.558, 0.135, 0.078], "light|light": [0.35, 0.015, 0.095, 0.431, 0.088, 0.021], "light|heavy": [0.0, 0.271, 0.16, 0.259, 0.158, 0.153], "light|parry": [0.0, 0.271, 0.16, 0.259, 0.158, 0.153], "light|grab": [0.336, 0.137, 0.023, 0.434, 0.07, 0.0], "light|dodge": [0.536, 0.213, 0.0, 0.0, 0.0, 0.251], "heavy|block": [0.0, 0.4, 0.049, 0.268, 0.0, 0.283], "heavy|light": [0.497, 0.155, 0.13, 0.0, 0.0, 0.219], "heavy|heavy": [0.0, 0.325, 0.178, 0.152, 0.136, 0.209], "heavy|parry": [0.0, 0.325, 0.178, 0.152, 0.136, 0.209], "heavy|grab": [0.197, 0.359, 0.0, 0.199, 0.0, 0.245], "heavy|dodge": [0.536, 0.213, 0.0, 0.0, 0.0, 0.251], "parry|block": [0.0, 0.4, 0.049, 0.268, 0.0, 0.283], "parry|light": [0.497, 0.155, 0.13, 0.0, 0.0, 0.219], "parry|heavy": [0.0, 0.325, 0.178, 0.152, 0.136, 0.209], "parry|parry": [0.0, 0.325, 0.178, 0.152, 0.136, 0.209], "parry|grab": [0.197, 0.359, 0.0, 0.199, 0.0, 0.245], "parry|dodge": [0.536, 0.213, 0.0, 0.0, 0.0, 0.251], "grab|block": [0.0, 0.271, 0.16, 0.259, 0.158, 0.153], "grab|light": [0.0, 0.0, 0.124, 0.452, 0.377, 0.047], "grab|heavy": [0.0, 0.388, 0.323, 0.029, 0.26, 0.0], "grab|parry": [0.0, 0.388, 0.323, 0.029, 0.26, 0.0], "grab|grab": [0.096, 0.181, 0.034, 0.359, 0.33, 0.0], "grab|dodge": [0.0, 0.401, 0.205, 0.0, 0.105, 0.289], "dodge|block": [0.0, 0.487, 0.127, 0.0, 0.164, 0.222], "dodge|light": [0.0, 0.475, 0.277, 0.0, 0.248, 0.0], "dodge|heavy": [0.0, 0.421, 0.318, 0.0, 0.261, 0.0], "dodge|parry": [0.0, 0.421, 0.318, 0.0, 0.261, 0.0], "dodge|grab": [0.0, 0.63, 0.156, 0.0, 0.208, 0.006], "dodge|dodge": [0.0, 0.487, 0.127, 0.0, 0.164, 0.222], "none|none": [0.0, 0.325, 0.178, 0.152, 0.136, 0.209]}, "Battle|Dagger": {"block|block": [0.0, 0.333, 0.057, 0.233, 0.053, 0.325], "block|light": [0.653, 0.184, 0.0, 0.0, 0.043, 0.121], "block|heavy": [0.0, 0.435, 0.188, 0.23, 0.147, 0.0], "block|parry": [0.0, 0.435, 0.188, 0.23, 0.147, 0.0], "block|grab": [0.0, 0.391, 0.071, 0.275, 0.047, 0.216], "block|dodge": [0.771, 0.109, 0.0, 0.0, 0.006, 0.114], "light|block": [0.0, 0.0, 0.245, 0.609, 0.146, 0.0], "light|light": [0.592, 0.107, 0.031, 0.134, 0.054, 0.082], "light|heavy": [0.0, 0.118, 0.229, 0.497, 0.156, 0.0], "light|parry": [0.0, 0.118, 0.229, 0.497, 0.156, 0.0], "light|grab": [0.0, 0.26, 0.087, 0.559, 0.094, 0.0], "light|dodge": [0.85, 0.0, 0.0, 0.126, 0.0, 0.024], "heavy|block": [0.868, 0.0, 0.0, 0.0, 0.0, 0.132], "heavy|light": [0.469, 0.219, 0.0, 0.113, 0.031, 0.168], "heavy|heavy": [0.0, 0.333, 0.057, 0.233, 0.053, 0.325], "heavy|parry": [0.0, 0.333, 0.057, 0.233, 0.053, 0.325], "heavy|grab": [0.868, 0.0, 0.0, 0.0, 0.0, 0.132], "heavy|dodge": [0.868, 0.0, 0.0, 0.0, 0.0, 0.132], "parry|block": [0.868, 0.0, 0.0, 0.0, 0.0, 0.132], "parry|light": [0.469, 0.219, 0.0, 0.113, 0.031, 0.168], "parry|heavy": [0.0, 0.333, 0.057, 0.233, 0.053, 0.325], "parry|parry": [0.0, 0.333, 0.057, 0.233, 0.053, 0.325], "parry|grab": [0.868, 0.0, 0.0, 0.0, 0.0, 0.132], "parry|dodge": [0.868, 0.0, 0.0, 0.0, 0.0, 0.132], "grab|block": [0.0, 0.0, 0.156, 0.448, 0.396, 0.0], "grab|light": [0.512, 0.0, 0.082, 0.195, 0.162, 0.049], "grab|heavy": [0.0, 0.351, 0.182, 0.301, 0.165, 0.0], "grab|parry": [0.0, 0.351, 0.182, 0.301, 0.165, 0.0], "grab|grab": [0.0, 0.267, 0.091, 0.437, 0.205, 0.0], "grab|dodge": [0.903, 0.0, 0.0, 0.0, 0.08, 0.017], "dodge|block": [0.0, 0.389, 0.0, 0.288, 0.07, 0.253], "dodge|light": [0.0, 0.832, 0.021, 0.0, 0.147, 0.0], "dodge|heavy": [0.0, 0.832, 0.021, 0.0, 0.147, 0.0], "dodge|parry": [0.0, 0.832, 0.021, 0.0, 0.147, 0.0], "dodge|grab": [0.0, 0.389, 0.0, 0.288, 0.07, 0.253], "dodge|dodge": [0.771, 0.109, 0.0, 0.0, 0.006, 0.114], "none|none": [0.0, 0.333, 0.057, 0.233, 0.053, 0.325]}, "Battle|Short": {"block|block": [0.0, 0.354, 0.058, 0.238, 0.041, 0.309], "block|light": [0.585, 0.102, 0.1, 0.0, 0.058, 0.155], "block|heavy": [0.0, 0.356, 0.229, 0.225, 0.19, 0.0], "block|parry": [0.0, 0.356, 0.229, 0.225, 0.19, 0.0], "block|grab": [0.384, 0.271, 0.0, 0.129, 0.027, 0.188], "block|dodge": [0.695, 0.163, 0.0, 0.0, 0.003, 0.14], "light|block": [0.0, 0.0, 0.22, 0.649, 0.131, 0.0], "light|light": [0.505, 0.147, 0.03, 0.167, 0.057, 0.094], "light|heavy": [0.0, 0.123, 0.204, 0.529, 0.143, 0.0], "light|parry": [0.0, 0.123, 0.204, 0.529, 0.143, 0.0], "light|grab": [0.0, 0.308, 0.121, 0.481, 0.09, 0.0], "light|dodge": [0.769, 0.0, 0.0, 0.19, 0.0, 0.042], "heavy|block": [0.297, 0.357, 0.0, 0.0, 0.0, 0.347], "heavy|light": [0.384, 0.271, 0.0, 0.129, 0.027, 0.188], "heavy|heavy": [0.0, 0.354, 0.058, 0.238, 0.041, 0.309], "heavy|parry": [0.0, 0.354, 0.058, 0.238, 0.041, 0.309], "heavy|grab": [0.297, 0.357, 0.0, 0.0, 0.0, 0.347], "heavy|dodge": [0.297, 0.357, 0.0, 0.0, 0.0, 0.347], "parry|block": [0.297, 0.357, 0.0, 0.0, 0.0, 0.347], "parry|light": [0.384, 0.271, 0.0, 0.129, 0.027, 0.188], "parry|heavy": [0.0, 0.354, 0.058, 0.238, 0.041, 0.309], "parry|parry": [0.0, 0.354, 0.058, 0.238, 0.041, 0.309], "parry|grab": [0.297, 0.357, 0.0, 0.0, 0.0, 0.347], "parry|dodge": [0.297, 0.357, 0.0, 0.0, 0.0, 0.347], "grab|block": [0.0, 0.0, 0.112, 0.431, 0.396, 0.061], "grab|light": [0.634, 0.079, 0.073, 0.06, 0.073, 0.081], "grab|heavy": [0.0, 0.336, 0.224, 0.248, 0.192, 0.0], "grab|parry": [0.0, 0.336, 0.224, 0.248, 0.192, 0.0], "grab|grab": [0.028, 0.194, 0.058, 0.445, 0.275, 0.0], "grab|dodge": [0.851, 0.0, 0.0, 0.0, 0.126, 0.023], "dodge|block": [0.0, 0.405, 0.0, 0.29, 0.057, 0.248], "dodge|light": [0.0, 0.606, 0.18, 0.0, 0.214, 0.0], "dodge|heavy": [0.0, 0.606, 0.18, 0.0, 0.214, 0.0], "dodge|parry": [0.0, 0.606, 0.18, 0.0, 0.214, 0.0], "dodge|grab": [0.0, 0.405, 0.0, 0.29, 0.057, 0.248], "dodge|dodge": [0.695, 0.163, 0.0, 0.0, 0.003, 0.14], "none|none": [0.0, 0.354, 0.058, 0.238, 0.041, 0.309]}, "Battle|Long": {"block|block": [0.0, 0.367, 0.059, 0.246, 0.02, 0.308], "block|light": [0.542, 0.093, 0.132, 0.0, 0.045, 0.188], "block|heavy": [0.0, 0.368, 0.238, 0.228, 0.166, 0.0], "block|parry": [0.0, 0.368, 0.238, 0.228, 0.166, 0.0], "block|grab": [0.36, 0.297, 0.0, 0.128, 0.01, 0.205], "block|dodge": [0.621, 0.207, 0.0, 0.0, 0.0, 0.172], "light|block": [0.0, 0.112, 0.16, 0.585, 0.143, 0.0], "light|light": [0.377, 0.0, 0.055, 0.487, 0.062, 0.018], "light|heavy": [0.0, 0.112, 0.16, 0.585, 0.143, 0.0], "light|parry": [0.0, 0.112, 0.16, 0.585, 0.143, 0.0], "light|grab": [0.38, 0.17, 0.048, 0.326, 0.076, 0.0], "light|dodge": [0.621, 0.207, 0.0, 0.0, 0.0, 0.172], "heavy|block": [0.0, 0.367, 0.059, 0.246, 0.02, 0.308], "heavy|light": [0.36, 0.297, 0.0, 0.128, 0.01, 0.205], "heavy|heavy": [0.0, 0.367, 0.059, 0.246, 0.02, 0.308], "heavy|parry": [0.0, 0.367, 0.059, 0.246, 0.02, 0.308], "heavy|grab": [0.36, 0.297, 0.0, 0.128, 0.01, 0.205], "heavy|dodge": [0.621, 0.207, 0.0, 0.0, 0.0, 0.172], "parry|block": [0.0, 0.367, 0.059, 0.246, 0.02, 0.308], "parry|light": [0.36, 0.297, 0.0, 0.128, 0.01, 0.205], "parry|heavy": [0.0, 0.367, 0.059, 0.246, 0.02, 0.308], "parry|parry": [0.0, 0.367, 0.059, 0.246, 0.02, 0.308], "parry|grab": [0.36, 0.297, 0.0, 0.128, 0.01, 0.205], "parry|dodge": [0.621, 0.207, 0.0, 0.0, 0.0, 0.172], "grab|block": [0.0, 0.101, 0.023, 0.468, 0.358, 0.05], "grab|light": [0.16, 0.0, 0.055, 0.413, 0.352, 0.02], "grab|heavy": [0.0, 0.206, 0.198, 0.414, 0.182, 0.0], "grab|parry": [0.0, 0.206, 0.198, 0.414, 0.182, 0.0], "grab|grab": [0.011, 0.091, 0.02, 0.491, 0.387, 0.0], "grab|dodge": [0.621, 0.207, 0.0, 0.0, 0.0, 0.172], "dodge|block": [0.0, 0.415, 0.0, 0.296, 0.036, 0.253], "dodge|light": [0.0, 0.64, 0.137, 0.0, 0.222, 0.0], "dodge|heavy": [0.0, 0.64, 0.137, 0.0, 0.222, 0.0], "dodge|parry": [0.0, 0.64, 0.137, 0.0, 0.222, 0.0], "dodge|grab": [0.0, 0.415, 0.0, 0.296, 0.036, 0.253], "dodge|dodge": [0.621, 0.207, 0.0, 0.0, 0.0, 0.172], "none|none": [0.0, 0.367, 0.059, 0.246, 0.02, 0.308]}, "Battle|Battle": {"block|block": [0.0, 0.358, 0.119, 0.163, 0.077, 0.284], "block|light": [0.54, 0.106, 0.132, 0.0, 0.0, 0.222], "block|heavy": [0.0, 0.302, 0.169, 0.151, 0.151, 0.227], "block|parry": [0.0, 0.302, 0.169, 0.151, 0.151, 0.227], "block|grab": [0.0, 0.469, 0.168, 0.225, 0.077, 0.062], "block|dodge": [0.0, 0.461, 0.119, 0.0, 0.031, 0.388], "light|block": [0.0, 0.093, 0.154, 0.597, 0.156, 0.0], "light|light": [0.357, 0.0, 0.059, 0.499, 0.078, 0.007], "light|heavy": [0.0, 0.0, 0.21, 0.619, 0.171, 0.0], "light|parry": [0.0, 0.0, 0.21, 0.619, 0.171, 0.0], "light|grab": [0.345, 0.153, 0.037, 0.387, 0.078, 0.0], "light|dodge": [0.559, 0.207, 0.0, 0.0, 0.0, 0.234], "heavy|block": [0.0, 0.377, 0.056, 0.258, 0.006, 0.303], "heavy|light": [0.507, 0.285, 0.0, 0.0, 0.0, 0.207], "heavy|heavy": [0.0, 0.358, 0.119, 0.163, 0.077, 0.284], "heavy|parry": [0.0, 0.358, 0.119, 0.163, 0.077, 0.284], "heavy|grab": [0.289, 0.317, 0.0, 0.154, 0.0, 0.24], "heavy|dodge": [0.559, 0.207, 0.0, 0.0, 0.0, 0.234], "parry|block": [0.0, 0.377, 0.056, 0.258, 0.006, 0.303], "parry|light": [0.507, 0.285, 0.0, 0.0, 0.0, 0.207], "parry|heavy": [0.0, 0.358, 0.119, 0.163, 0.077, 0.284], "parry|parry": [0.0, 0.358, 0.119, 0.163, 0.077, 0.284], "parry|grab": [0.289, 0.317, 0.0, 0.154, 0.0, 0.24], "parry|dodge": [0.559, 0.207, 0.0, 0.0, 0.0, 0.234], "grab|block": [0.0, 0.286, 0.119, 0.276, 0.108, 0.211], "grab|light": [0.0, 0.022, 0.045, 0.506, 0.417, 0.01], "grab|heavy": [0.0, 0.23, 0.18, 0.397, 0.193, 0.0], "grab|parry": [0.0, 0.23, 0.18, 0.397, 0.193, 0.0], "grab|grab": [0.029, 0.112, 0.017, 0.46, 0.381, 0.0], "grab|dodge": [0.0, 0.461, 0.119, 0.0, 0.031, 0.388], "dodge|block": [0.0, 0.509, 0.0, 0.163, 0.119, 0.21], "dodge|light": [0.0, 0.643, 0.124, 0.0, 0.232, 0.0], "dodge|heavy": [0.0, 0.643, 0.124, 0.0, 0.232, 0.0], "dodge|parry": [0.0, 0.643, 0.124, 0.0, 0.232, 0.0], "dodge|grab": [0.0, 0.509, 0.0, 0.163, 0.119, 0.21], "dodge|dodge": [0.0, 0.612, 0.0, 0.0, 0.073, 0.315], "none|none": [0.0, 0.358, 0.119, 0.163, 0.077, 0.284]}, "Battle|Great": {"block|block": [0.0, 0.312, 0.17, 0.157, 0.138, 0.223], "block|light": [0.491, 0.136, 0.124, 0.0, 0.0, 0.25], "block|heavy": [0.0, 0.312, 0.17, 0.157, 0.138, 0.223], "block|parry": [0.0, 0.312, 0.17, 0.157, 0.138, 0.223], "block|grab": [0.384, 0.363, 0.144, 0.041, 0.068, 0.0], "block|dodge": [0.0, 0.39, 0.193, 0.0, 0.106, 0.311], "light|block": [0.0, 0.062, 0.143, 0.581, 0.156, 0.058], "light|light": [0.37, 0.0, 0.07, 0.476, 0.083, 0.0], "light|heavy": [0.0, 0.217, 0.141, 0.349, 0.178, 0.114], "light|parry": [0.0, 0.217, 0.141, 0.349, 0.178, 0.114], "light|grab": [0.358, 0.11, 0.006, 0.452, 0.073, 0.0], "light|dodge": [0.519, 0.204, 0.0, 0.0, 0.0, 0.278], "heavy|block": [0.0, 0.384, 0.048, 0.273, 0.0, 0.295], "heavy|light": [0.491, 0.136, 0.124, 0.0, 0.0, 0.25], "heavy|heavy": [0.0, 0.312, 0.17, 0.157, 0.138, 0.223], "heavy|parry": [0.0, 0.312, 0.17, 0.157, 0.138, 0.223], "heavy|grab": [0.0, 0.422, 0.052, 0.3, 0.0, 0.225], "heavy|dodge": [0.519, 0.204, 0.0, 0.0, 0.0, 0.278], "parry|block": [0.0, 0.384, 0.048, 0.273, 0.0, 0.295], "parry|light": [0.491, 0.136, 0.124, 0.0, 0.0, 0.25], "parry|heavy": [0.0, 0.312, 0.17, 0.157, 0.138, 0.223], "parry|parry": [0.0, 0.312, 0.17, 0.157, 0.138, 0.223], "parry|grab": [0.0, 0.422, 0.052, 0.3, 0.0, 0.225], "parry|dodge": [0.519, 0.204, 0.0, 0.0, 0.0, 0.278], "grab|block": [0.0, 0.217, 0.141, 0.349, 0.178, 0.114], "grab|light": [0.0, 0.087, 0.013, 0.475, 0.421, 0.003], "grab|heavy": [0.0, 0.217, 0.141, 0.349, 0.178, 0.114], "grab|parry": [0.0, 0.217, 0.141, 0.349, 0.178, 0.114], "grab|grab": [0.034, 0.105, 0.003, 0.445, 0.413, 0.0], "grab|dodge": [0.0, 0.39, 0.193, 0.0, 0.106, 0.311], "dodge|block": [0.0, 0.653, 0.106, 0.0, 0.241, 0.0], "dodge|light": [0.0, 0.653, 0.106, 0.0, 0.241, 0.0], "dodge|heavy": [0.0, 0.653, 0.106, 0.0, 0.241, 0.0], "dodge|parry": [0.0, 0.653, 0.106, 0.0, 0.241, 0.0], "dodge|grab": [0.0, 0.653, 0.106, 0.0, 0.241, 0.0], "dodge|dodge": [0.0, 0.653, 0.106, 0.0, 0.241, 0.0], "none|none": [0.0, 0.312, 0.17, 0.157, 0.138, 0.223]}, "Great|Dagger": {"block|block": [0.0, 0.308, 0.051, 0.228, 0.06, 0.352], "block|light": [0.538, 0.172, 0.0, 0.064, 0.015, 0.212], "block|heavy": [0.0, 0.308, 0.051, 0.228, 0.06, 0.352], "block|parry": [0.0, 0.308, 0.051, 0.228, 0.06, 0.352], "block|grab": [0.0, 0.365, 0.063, 0.271, 0.063, 0.239], "block|dodge": [0.69, 0.115, 0.0, 0.0, 0.0, 0.195], "light|block": [0.0, 0.0, 0.248, 0.587, 0.166, 0.0], "light|light": [0.0, 0.103, 0.0, 0.365, 0.472, 0.06], "light|heavy": [0.0, 0.103, 0.227, 0.492, 0.177, 0.0], "light|parry": [0.0, 0.103, 0.227, 0.492, 0.177, 0.0], "light|grab": [0.0, 0.265, 0.083, 0.535, 0.117, 0.0], "light|dodge": [0.78, 0.0, 0.0, 0.138, 0.0, 0.082], "heavy|block": [0.771, 0.0, 0.0, 0.0, 0.0, 0.229], "heavy|light": [0.538, 0.172, 0.0, 0.064, 0.015, 0.212], "heavy|heavy": [0.0, 0.308, 0.051, 0.228, 0.06, 0.352], "heavy|parry": [0.0, 0.308, 0.051, 0.228, 0.06, 0.352], "heavy|grab": [0.771, 0.0, 0.0, 0.0, 0.0, 0.229], "heavy|dodge": [0.771, 0.0, 0.0, 0.0, 0.0, 0.229], "parry|block": [0.771, 0.0, 0.0, 0.0, 0.0, 0.229], "parry|light": [0.538, 0.172, 0.0, 0.064, 0.015, 0.212], "parry|heavy": [0.0, 0.308, 0.051, 0.228, 0.06, 0.352], "parry|parry": [0.0, 0.308, 0.051, 0.228, 0.06, 0.352], "parry|grab": [0.771, 0.0, 0.0, 0.0, 0.0, 0.229], "parry|dodge": [0.771, 0.0, 0.0, 0.0, 0.0, 0.229], "grab|block": [0.0, 0.0, 0.171, 0.446, 0.383, 0.0], "grab|light": [0.0, 0.0, 0.049, 0.37, 0.553, 0.028], "grab|heavy": [0.0, 0.0, 0.171, 0.446, 0.383, 0.0], "grab|parry": [0.0, 0.0, 0.171, 0.446, 0.383, 0.0], "grab|grab": [0.0, 0.294, 0.101, 0.435, 0.17, 0.0], "grab|dodge": [0.827, 0.0, 0.0, 0.0, 0.089, 0.084], "dodge|block": [0.0, 0.508, 0.0, 0.397, 0.095, 0.0], "dodge|light": [0.0, 0.508, 0.0, 0.397, 0.095, 0.0], "dodge|heavy": [0.0, 0.508, 0.0, 0.397, 0.095, 0.0], "dodge|parry": [0.0, 0.508, 0.0, 0.397, 0.095, 0.0], "dodge|grab": [0.0, 0.508, 0.0, 0.397, 0.095, 0.0], "dodge|dodge": [0.69, 0.115, 0.0, 0.0, 0.0, 0.195], "none|none": [0.0, 0.308, 0.051, 0.228, 0.06, 0.352]}, "Great|Short": {"block|block": [0.0, 0.345, 0.054, 0.236, 0.059, 0.306], "block|light": [0.584, 0.22, 0.0, 0.0, 0.031, 0.165], "block|heavy": [0.0, 0.444, 0.183, 0.221, 0.151, 0.0], "block|parry": [0.0, 0.444, 0.183, 0.221, 0.151, 0.0], "block|grab": [0.0, 0.399, 0.068, 0.275, 0.054, 0.204], "block|dodge": [0.672, 0.161, 0.0, 0.0, 0.0, 0.168], "light|block": [0.0, 0.0, 0.241, 0.603, 0.157, 0.0], "light|light": [0.582, 0.153, 0.0, 0.139, 0.053, 0.072], "light|heavy": [0.0, 0.123, 0.218, 0.491, 0.169, 0.0], "light|parry": [0.0, 0.123, 0.218, 0.491, 0.169, 0.0], "light|grab": [0.0, 0.263, 0.074, 0.559, 0.104, 0.0], "light|dodge": [0.763, 0.0, 0.0, 0.192, 0.0, 0.045], "heavy|block": [0.79, 0.0, 0.0, 0.0, 0.0, 0.21], "heavy|light": [0.427, 0.248, 0.0, 0.105, 0.026, 0.194], "heavy|heavy": [0.0, 0.345, 0.054, 0.236, 0.059, 0.306], "heavy|parry": [0.0, 0.345, 0.054, 0.236, 0.059, 0.306], "heavy|grab": [0.79, 0.0, 0.0, 0.0, 0.0, 0.21], "heavy|dodge": [0.79, 0.0, 0.0, 0.0, 0.0, 0.21], "parry|block": [0.79, 0.0, 0.0, 0.0, 0.0, 0.21], "parry|light": [0.427, 0.248, 0.0, 0.105, 0.026, 0.194], "parry|heavy": [0.0, 0.345, 0.054, 0.236, 0.059, 0.306], "parry|parry": [0.0, 0.345, 0.054, 0.236, 0.059, 0.306], "parry|grab": [0.79, 0.0, 0.0, 0.0, 0.0, 0.21], "parry|dodge": [0.79, 0.0, 0.0, 0.0, 0.0, 0.21], "grab|block": [0.0, 0.0, 0.15, 0.402, 0.366, 0.083], "grab|light": [0.421, 0.0, 0.087, 0.235, 0.215, 0.042], "grab|heavy": [0.0, 0.321, 0.171, 0.327, 0.182, 0.0], "grab|parry": [0.0, 0.321, 0.171, 0.327, 0.182, 0.0], "grab|grab": [0.0, 0.281, 0.087, 0.433, 0.199, 0.0], "grab|dodge": [0.83, 0.0, 0.0, 0.0, 0.126, 0.044], "dodge|block": [0.0, 0.397, 0.0, 0.287, 0.076, 0.241], "dodge|light": [0.0, 0.764, 0.0, 0.069, 0.167, 0.0], "dodge|heavy": [0.0, 0.764, 0.0, 0.069, 0.167, 0.0], "dodge|parry": [0.0, 0.764, 0.0, 0.069, 0.167, 0.0], "dodge|grab": [0.0, 0.397, 0.0, 0.287, 0.076, 0.241], "dodge|dodge": [0.672, 0.161, 0.0, 0.0, 0.0, 0.168], "none|none": [0.0, 0.345, 0.054, 0.236, 0.059, 0.306]}, "Great|Long": {"block|block": [0.0, 0.36, 0.054, 0.241, 0.046, 0.299], "block|light": [0.543, 0.098, 0.122, 0.0, 0.057, 0.18], "block|heavy": [0.0, 0.361, 0.226, 0.219, 0.193, 0.0], "block|parry": [0.0, 0.361, 0.226, 0.219, 0.193, 0.0], "block|grab": [0.348, 0.291, 0.0, 0.131, 0.028, 0.202], "block|dodge": [0.636, 0.196, 0.0, 0.0, 0.0, 0.168], "light|block": [0.0, 0.0, 0.208, 0.655, 0.137, 0.0], "light|light": [0.502, 0.174, 0.005, 0.181, 0.063, 0.076], "light|heavy": [0.0, 0.12, 0.187, 0.541, 0.153, 0.0], "light|parry": [0.0, 0.12, 0.187, 0.541, 0.153, 0.0], "light|grab": [0.0, 0.303, 0.116, 0.489, 0.093, 0.0], "light|dodge": [0.71, 0.0, 0.0, 0.231, 0.0, 0.059], "heavy|block": [0.016, 0.489, 0.0, 0.062, 0.0, 0.433], "heavy|light": [0.348, 0.291, 0.0, 0.131, 0.028, 0.202], "heavy|heavy": [0.0, 0.36, 0.054, 0.241, 0.046, 0.299], "heavy|parry": [0.0, 0.36, 0.054, 0.241, 0.046, 0.299], "heavy|grab": [0.016, 0.489, 0.0, 0.062, 0.0, 0.433], "heavy|dodge": [0.231, 0.395, 0.0, 0.0, 0.0, 0.373], "parry|block": [0.016, 0.489, 0.0, 0.062, 0.0, 0.433], "parry|light": [0.348, 0.291, 0.0, 0.131, 0.028, 0.202], "parry|heavy": [0.0, 0.36, 0.054, 0.241, 0.046, 0.299], "parry|parry": [0.0, 0.36, 0.054, 0.241, 0.046, 0.299], "parry|grab": [0.016, 0.489, 0.0, 0.062, 0.0, 0.433], "parry|dodge": [0.231, 0.395, 0.0, 0.0, 0.0, 0.373], "grab|block": [0.0, 0.181, 0.052, 0.411, 0.251, 0.105], "grab|light": [0.669, 0.131, 0.038, 0.0, 0.091, 0.07], "grab|heavy": [0.0, 0.271, 0.206, 0.321, 0.202, 0.0], "grab|parry": [0.0, 0.271, 0.206, 0.321, 0.202, 0.0], "grab|grab": [0.083, 0.165, 0.04, 0.425, 0.287, 0.0], "grab|dodge": [0.637, 0.195, 0.0, 0.0, 0.0, 0.167], "dodge|block": [0.0, 0.406, 0.0, 0.289, 0.061, 0.244], "dodge|light": [0.0, 0.628, 0.131, 0.0, 0.242, 0.0], "dodge|heavy": [0.0, 0.628, 0.131, 0.0, 0.242, 0.0], "dodge|parry": [0.0, 0.628, 0.131, 0.0, 0.242, 0.0], "dodge|grab": [0.0, 0.406, 0.0, 0.289, 0.061, 0.244], "dodge|dodge": [0.636, 0.196, 0.0, 0.0, 0.0, 0.168], "none|none": [0.0, 0.36, 0.054, 0.241, 0.046, 0.299]}, "Great|Battle": {"block|block": [0.0, 0.368, 0.051, 0.246, 0.037, 0.298], "block|light": [0.492, 0.126, 0.123, 0.0, 0.057, 0.202], "block|heavy": [0.0, 0.373, 0.231, 0.217, 0.179, 0.0], "block|parry": [0.0, 0.373, 0.231, 0.217, 0.179, 0.0], "block|grab": [0.28, 0.317, 0.0, 0.159, 0.02, 0.224], "block|dodge": [0.603, 0.203, 0.0, 0.0, 0.0, 0.195], "light|block": [0.0, 0.108, 0.137, 0.591, 0.164, 0.0], "light|light": [0.0, 0.0, 0.027, 0.631, 0.341, 0.0], "light|heavy": [0.0, 0.108, 0.137, 0.591, 0.164, 0.0], "light|parry": [0.0, 0.108, 0.137, 0.591, 0.164, 0.0], "light|grab": [0.341, 0.16, 0.043, 0.364, 0.091, 0.0], "light|dodge": [0.603, 0.203, 0.0, 0.0, 0.0, 0.195], "heavy|block": [0.0, 0.368, 0.051, 0.246, 0.037, 0.298], "heavy|light": [0.28, 0.317, 0.0, 0.159, 0.02, 0.224], "heavy|heavy": [0.0, 0.368, 0.051, 0.246, 0.037, 0.298], "heavy|parry": [0.0, 0.368, 0.051, 0.246, 0.037, 0.298], "heavy|grab": [0.28, 0.317, 0.0, 0.159, 0.02, 0.224], "heavy|dodge": [0.603, 0.203, 0.0, 0.0, 0.0, 0.195], "parry|block": [0.0, 0.368, 0.051, 0.246, 0.037, 0.298], "parry|light": [0.28, 0.317, 0.0, 0.159, 0.02, 0.224], "parry|heavy": [0.0, 0.368, 0.051, 0.246, 0.037, 0.298], "parry|parry": [0.0, 0.368, 0.051, 0.246, 0.037, 0.298], "parry|grab": [0.28, 0.317, 0.0, 0.159, 0.02, 0.224], "parry|dodge": [0.603, 0.203, 0.0, 0.0, 0.0, 0.195], "grab|block": [0.0, 0.08, 0.017, 0.487, 0.389, 0.027], "grab|light": [0.093, 0.0, 0.044, 0.462, 0.394, 0.008], "grab|heavy": [0.0, 0.192, 0.186, 0.425, 0.196, 0.0], "grab|parry": [0.0, 0.192, 0.186, 0.425, 0.196, 0.0], "grab|grab": [0.033, 0.075, 0.01, 0.485, 0.396, 0.0], "grab|dodge": [0.603, 0.203, 0.0, 0.0, 0.0, 0.195], "dodge|block": [0.0, 0.41, 0.0, 0.289, 0.05, 0.251], "dodge|light": [0.0, 0.654, 0.088, 0.0, 0.259, 0.0], "dodge|heavy": [0.0, 0.654, 0.088, 0.0, 0.259, 0.0], "dodge|parry": [0.0, 0.654, 0.088, 0.0, 0.259, 0.0], "dodge|grab": [0.0, 0.41, 0.0, 0.289, 0.05, 0.251], "dodge|dodge": [0.603, 0.203, 0.0, 0.0, 0.0, 0.195], "none|none": [0.0, 0.368, 0.051, 0.246, 0.037, 0.298]}, "Great|Great": {"block|block": [0.0, 0.36, 0.114, 0.16, 0.086, 0.28], "block|light": [0.517, 0.13, 0.124, 0.0, 0.0, 0.23], "block|heavy": [0.0, 0.305, 0.165, 0.145, 0.16, 0.225], "block|parry": [0.0, 0.305, 0.165, 0.145, 0.16, 0.225], "block|grab": [0.0, 0.465, 0.16, 0.218, 0.086, 0.07], "block|dodge": [0.0, 0.462, 0.114, 0.0, 0.042, 0.381], "light|block": [0.0, 0.091, 0.138, 0.601, 0.171, 0.0], "light|light": [0.329, 0.0, 0.056, 0.524, 0.089, 0.002], "light|heavy": [0.0, 0.0, 0.194, 0.621, 0.185, 0.0], "light|parry": [0.0, 0.0, 0.194, 0.621, 0.185, 0.0], "light|grab": [0.326, 0.144, 0.032, 0.412, 0.086, 0.0], "light|dodge": [0.549, 0.201, 0.0, 0.0, 0.0, 0.25], "heavy|block": [0.0, 0.377, 0.051, 0.257, 0.017, 0.297], "heavy|light": [0.487, 0.298, 0.0, 0.0, 0.0, 0.215], "heavy|heavy": [0.0, 0.36, 0.114, 0.16, 0.086, 0.28], "heavy|parry": [0.0, 0.36, 0.114, 0.16, 0.086, 0.28], "heavy|grab": [0.085, 0.393, 0.044, 0.253, 0.0, 0.226], "heavy|dodge": [0.549, 0.201, 0.0, 0.0, 0.0, 0.25], "parry|block": [0.0, 0.377, 0.051, 0.257, 0.017, 0.297], "parry|light": [0.487, 0.298, 0.0, 0.0, 0.0, 0.215], "parry|heavy": [0.0, 0.36, 0.114, 0.16, 0.086, 0.28], "parry|parry": [0.0, 0.36, 0.114, 0.16, 0.086, 0.28], "parry|grab": [0.085, 0.393, 0.044, 0.253, 0.0, 0.226], "parry|dodge": [0.549, 0.201, 0.0, 0.0, 0.0, 0.25], "grab|block": [0.0, 0.279, 0.114, 0.286, 0.121, 0.2], "grab|light": [0.0, 0.025, 0.039, 0.507, 0.424, 0.005], "grab|heavy": [0.0, 0.185, 0.146, 0.378, 0.193, 0.099], "grab|parry": [0.0, 0.185, 0.146, 0.378, 0.193, 0.099], "grab|grab": [0.023, 0.096, 0.009, 0.472, 0.399, 0.0], "grab|dodge": [0.0, 0.462, 0.114, 0.0, 0.042, 0.381], "dodge|block": [0.0, 0.505, 0.0, 0.16, 0.126, 0.209], "dodge|light": [0.0, 0.659, 0.081, 0.0, 0.26, 0.0], "dodge|heavy": [0.0, 0.659, 0.081, 0.0, 0.26, 0.0], "dodge|parry": [0.0, 0.659, 0.081, 0.0, 0.26, 0.0], "dodge|grab": [0.0, 0.505, 0.0, 0.16, 0.126, 0.209], "dodge|dodge": [0.0, 0.607, 0.0, 0.0, 0.082, 0.311], "none|none": [0.0, 0.36, 0.114, 0.16, 0.086, 0.28]}};
+// ---- Duel! application ----------------------------------------------------
+const HP_MAX = 25;
+const MODE_LABEL = { block: "Block", light: "Light attack", heavy: "Heavy attack", parry: "Parry", grab: "Grab", dodge: "Dodge" };
+const STANCE_TEXT = {
+  light: "Next parry also stops heavy. Next attack 3 slower.",
+  heavy: "Next attack 3 slower.",
+  parry: "Next attack 3 slower.",
+  grab:  "Next grab beats heavy.",
+  dodge: "Next light attack can't be parried.",
+  block: "Nothing carries over.",
+};
+const WHAT_TEXT = {
+  block: "Takes 7 off any attack. Grab does nothing to it.",
+  light: "Weapon damage. Beats grab. Stopped by block, dodge, parry.",
+  heavy: "Double damage, slow. Beats parry and grab. Stopped by dodge.",
+  parry: "Beats light attack, hits back for weapon damage. Loses to heavy.",
+  grab:  "Beats dodge for double damage. Loses to any attack.",
+  dodge: "Avoids any attack. Loses to grab.",
+};
+
+async function sha256(text) {
+  const buf = new TextEncoder().encode(text);
+  const h = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+function nonce() {
+  const a = new Uint8Array(12); crypto.getRandomValues(a);
+  return Array.from(a).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+function roomCode() {
+  const alpha = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let s = "";
+  const a = new Uint8Array(5); crypto.getRandomValues(a);
+  for (const b of a) s += alpha[b % alpha.length];
+  return s;
+}
+
+// nashMix(rowW, colW, rowLast, colLast) -> probabilities over CARDS (row player's view)
+function nashMix(rowW, colW, rowLast, colLast) {
+  const t = NASH[`${rowW}|${colW}`];
+  return t[(rowLast || colLast) ? `${rowLast}|${colLast}` : "none|none"];
+}
+function sampleCard(p) { let r = Math.random(); for (let i = 0; i < p.length; i++) { r -= p[i]; if (r <= 0) return CARDS[i]; } return CARDS[5]; }
+
+// Practice opponent: behaves like a remote peer over the same protocol.
+function makeBot(weapon) {
+  let handler = null, myW = weapon, oppW = null, myLast = null, oppLast = null;
+  let pending = null;
+  const send = m => setTimeout(() => handler && handler(m), 0);
+  return {
+    onMessage(fn) { handler = fn; setTimeout(() => { send({ t: "weapon", w: myW }); send({ t: "ready" }); }, 0); },
+    async send(m) {
+      if (m.t === "weapon") oppW = m.w;
+      if (m.t === "ready") { }
+      if (m.t === "commit") {
+        const card = sampleCard(nashMix(myW, oppW, myLast, oppLast));
+        const n = nonce(); const h = await sha256(`${m.round}:${card}:${n}`);
+        pending = { round: m.round, card, n };
+        setTimeout(() => send({ t: "commit", round: m.round, hash: h }), 350 + Math.random() * 700);
+      }
+      if (m.t === "reveal") {
+        send({ t: "reveal", round: pending.round, card: pending.card, nonce: pending.n });
+        oppLast = m.card; myLast = pending.card;
+      }
+      if (m.t === "rematch") { myLast = oppLast = null; send({ t: "rematch" }); send({ t: "weapon", w: myW }); send({ t: "ready" }); }
+    },
+    close() { },
+  };
+}
+
+function createDuel({ $, net, isHost, practice, motion = true }) {
+  const S = {
+    phase: "arming", round: 0, myW: "Long", oppW: null, myReady: false, oppReady: false,
+    myWounds: 0, oppWounds: 0, myLast: null, oppLast: null,
+    my: null, opp: null, inbox: {}, mySent: { commit: false, reveal: false }, log: [],
+    rematch: { me: false, them: false }, over: null,
+  };
+  const wait = ms => new Promise(r => setTimeout(r, motion ? ms : 0));
+  // Move a card visually from one element's box to another's (FLIP), then resolve.
+  function fly(fromEl, toEl, html, ms = 380, scaleTo = 1) {
+    if (!motion || !fromEl || !toEl || typeof fromEl.getBoundingClientRect !== "function" || typeof document.body === "undefined") return Promise.resolve();
+    const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+    if (!a.width || !b.width) return Promise.resolve();
+    const ghost = document.createElement("div"); ghost.className = "ghost"; ghost.innerHTML = html;
+    ghost.style.cssText = `position:fixed;left:${a.left}px;top:${a.top}px;width:${a.width}px;height:${a.height}px;z-index:50;pointer-events:none;transform-origin:top left`;
+    document.body.appendChild(ghost);
+    const inner = ghost.firstElementChild; if (inner) { inner.style.width = a.width + "px"; inner.style.height = a.height + "px"; }
+    const anim = ghost.animate([
+      { transform: "translate(0,0) scale(1)" },
+      { transform: `translate(${b.left - a.left}px,${b.top - a.top}px) scale(${b.width / a.width})` }
+    ], { duration: ms, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" });
+    return new Promise(r => { anim.onfinish = () => { ghost.remove(); r(); }; setTimeout(() => { ghost.remove(); r(); }, ms + 60); });
+  }
+  let alive = true;
+  const on = (id, ev, fn) => { const el = $(id); if (el) el["on" + ev] = fn; };
+
+  // ---------- rendering ----------
+  function cardHTML(c, { faceDown = false, small = false, live = null } = {}) {
+    if (faceDown) return `<div class="cardface back${small ? " small" : ""}"></div>`;
+    return `<div class="cardface${small ? " small" : ""}">
+      <div class="c-name">${MODE_LABEL[c]}</div>
+      <div class="c-what">${WHAT_TEXT[c]}${live ? `<div class="c-live">${live}</div>` : ""}</div>
+      <div class="c-rule"></div>
+      <div class="c-stance">${STANCE_TEXT[c]}</div>
+    </div>`;
+  }
+  function liveText(c) {
+    const m = mods(S.myLast, c); const w = WEAPONS[S.myW]; const bits = [];
+    if (ATTACK_SPEED[c]) bits.push(`speed penalty ${w.speed + ATTACK_SPEED[c] + m.slow}`);
+    if (MULT[c]) bits.push(`${w.dmg * MULT[c]} damage`);
+    if (m.beats) bits.push(`beats ${m.beats} now`);
+    return bits.join(" · ");
+  }
+  function woundPile(el, n, countEl) {
+    // add only the missing tokens so just the new ones animate; remove extras on reset
+    while (el.children.length > n) el.removeChild(el.lastChild);
+    for (let i = el.children.length; i < n; i++) {
+      const t = document.createElement("i");
+      // deterministic scatter (golden angle) so both players see the same pile shape
+      const a = i * 2.39996, r = 4 + 9.5 * Math.sqrt(i);
+      t.style.left = `${70 + Math.cos(a) * r * 1.35}px`; t.style.top = `${44 + Math.sin(a) * r * 0.8}px`;
+      t.style.zIndex = i; el.appendChild(t);
+    }
+    countEl.textContent = n;
+  }
+  function renderHand() {
+    const hand = $("hand"); hand.innerHTML = "";
+    const canPlay = S.phase === "choose";
+    CARDS.forEach(c => {
+      const b = document.createElement("button"); b.className = "hcard"; b.disabled = !canPlay; b.dataset.card = c; b.setAttribute("aria-label", `Play ${MODE_LABEL[c]}`);
+      b.innerHTML = cardHTML(c, { live: liveText(c) });
+      b.addEventListener("click", () => play(c, b));
+      hand.appendChild(b);
+    });
+  }
+  function renderStatus() {
+    const s = $("status");
+    const oppName = S.oppW ? WEAPON_LABEL[S.oppW] : "choosing…";
+    $("oppLabel").textContent = practice ? `Practice opponent · ${oppName}` : `Opponent · ${oppName}`;
+    $("myLabel").textContent = `You · ${WEAPON_LABEL[S.myW]}`;
+    const text = {
+      arming: S.myReady ? (S.oppReady ? "Starting…" : "Waiting for your opponent to be ready.") : "Choose your weapon, then press Ready.",
+      choose: `Round ${S.round}. Choose a card.`,
+      waitCommit: "Your card is down. Waiting for theirs.",
+      waitReveal: "Both cards are down. Revealing…",
+      resolving: "",
+      over: S.over,
+    }[S.phase];
+    s.textContent = text || "";
+    $("armPanel").style.display = S.phase === "arming" ? "" : "none";
+    $("weaponSel").disabled = S.myReady; $("readyBtn").disabled = S.myReady;
+    $("readyBtn").textContent = S.myReady ? "Ready ✓" : "Ready";
+    $("oppReady").textContent = S.phase !== "arming" ? "" : S.oppReady ? "Opponent is ready." : (S.oppW ? "Opponent is still deciding." : "");
+    $("endPanel").style.display = S.phase === "over" ? "" : "none";
+    $("rematchBtn").textContent = S.rematch.me ? (S.rematch.them ? "Starting…" : "Waiting for opponent…") : "Play again";
+    $("rematchBtn").disabled = S.rematch.me;
+  }
+  function renderTable() {
+    $("myStance").innerHTML = (S.myLast ? cardHTML(S.myLast, { small: true }) : `<div class="slot-empty"></div>`) + `<div class="cap">your stance</div>`;
+    $("oppStance").innerHTML = (S.oppLast ? cardHTML(S.oppLast, { small: true }) : `<div class="slot-empty"></div>`) + `<div class="cap">their stance</div>`;
+    woundPile($("myPile"), S.myWounds, $("myCount")); woundPile($("oppPile"), S.oppWounds, $("oppCount"));
+  }
+  function renderLog() {
+    const ul = $("log"); ul.innerHTML = "";
+    for (const line of S.log) { const li = document.createElement("li"); li.innerHTML = line; ul.prepend(li); }
+  }
+  function renderAll() { renderStatus(); renderTable(); renderHand(); renderLog(); }
+
+  // ---------- protocol ----------
+  function send(m) { net.send(m); }
+  function startRound() {
+    S.round += 1; S.my = null; S.opp = S.inbox[S.round] || null; S.mySent = { commit: false, reveal: false }; S.phase = "choose";
+    $("myPlay").innerHTML = ""; $("oppPlay").innerHTML = ""; $("clash").textContent = "";
+    if (S.opp && S.opp.hash) { $("oppPlay").innerHTML = cardHTML(null, { faceDown: true }); }
+    renderAll();
+  }
+  async function play(c, fromEl) {
+    if (S.phase !== "choose") return;
+    S.phase = "waitCommit"; renderHand();
+    const n = nonce(); const h = await sha256(`${S.round}:${c}:${n}`);
+    S.my = { card: c, nonce: n, hash: h };
+    await fly(fromEl, $("myPlay"), cardHTML(c, { faceDown: true }), 420);
+    $("myPlay").innerHTML = cardHTML(c, { faceDown: true });
+    send({ t: "commit", round: S.round, hash: h, w: S.myW }); S.mySent.commit = true;
+    renderStatus(); renderHand(); advance();
+  }
+  async function advance() {
+    if (S.phase !== "waitCommit" && S.phase !== "waitReveal") return;
+    if (S.my && S.opp && S.opp.hash && !S.mySent.reveal) {
+      S.mySent.reveal = true; S.phase = "waitReveal"; renderStatus();
+      await wait(500);
+      send({ t: "reveal", round: S.round, card: S.my.card, nonce: S.my.nonce });
+    }
+    if (S.mySent.reveal && S.opp && S.opp.hash && S.opp.card && S.phase === "waitReveal") {
+      S.phase = "resolving";  // claim the round synchronously so a second advance() can't resolve it too
+      const check = await sha256(`${S.round}:${S.opp.card}:${S.opp.nonce}`);
+      if (check !== S.opp.hash) { S.phase = "over"; S.over = "The opponent's revealed card didn't match what they committed to. Duel voided."; renderStatus(); return; }
+      await resolveRound();
+    }
+  }
+  async function resolveRound() {
+    S.phase = "resolving"; renderStatus();
+    const c = S.my.card, o = S.opp.card;
+    const r = resolve(c, o, WEAPONS[S.myW], WEAPONS[S.oppW], S.myLast, S.oppLast);
+    // flip both
+    $("myPlay").innerHTML = cardHTML(c, { live: liveText(c) }); $("myPlay").firstElementChild.classList.add("flip");
+    $("oppPlay").innerHTML = cardHTML(o); $("oppPlay").firstElementChild.classList.add("flip");
+    await wait(450);
+    $("clash").textContent = r.note.replace(/^you/, "You").replace(/^they/, "They");
+    // wounds drop into piles one at a time
+    const drops = Math.max(r.d1, r.d2);
+    for (let i = 0; i < drops; i++) {
+      if (i < r.d2) S.myWounds = Math.min(HP_MAX, S.myWounds + 1);
+      if (i < r.d1) S.oppWounds = Math.min(HP_MAX, S.oppWounds + 1);
+      woundPile($("myPile"), S.myWounds, $("myCount")); woundPile($("oppPile"), S.oppWounds, $("oppCount"));
+      await wait(drops > 10 ? 35 : 70);
+    }
+    const hp = ` <span class="dim">(you ${HP_MAX - S.myWounds} · them ${HP_MAX - S.oppWounds})</span>`;
+    const note = r.note.charAt(0).toUpperCase() + r.note.slice(1);
+    S.log.push(`<b>${S.round}</b> ${MODE_LABEL[c]} vs ${MODE_LABEL[o]}. ${note}.${(r.d1 || r.d2) ? hp : ""}`);
+    renderLog();
+    await wait(650);
+    // played cards slide over to the stance slots
+    S.myLast = c; S.oppLast = o;
+    const p1 = fly($("myPlay"), $("myStance"), cardHTML(c), 380), p2 = fly($("oppPlay"), $("oppStance"), cardHTML(o), 380);
+    $("myPlay").innerHTML = ""; $("oppPlay").innerHTML = "";
+    await Promise.all([p1, p2]);
+    renderTable();
+    if (S.myWounds >= HP_MAX || S.oppWounds >= HP_MAX) {
+      S.phase = "over";
+      S.over = S.myWounds >= HP_MAX && S.oppWounds >= HP_MAX ? "Double knockout. Drawn."
+        : S.oppWounds >= HP_MAX ? `You win, ${HP_MAX - S.myWounds} HP left, ${S.round} exchanges.` : `You lose. They had ${HP_MAX - S.oppWounds} HP left.`;
+      $("myPlay").innerHTML = ""; $("oppPlay").innerHTML = "";
+      $("clash").innerHTML = `<span class="final">${S.over}</span>`;
+      renderAll();
+    } else startRound();
+  }
+  function tryStart() {
+    if (S.myReady && S.oppReady && S.phase === "arming") {
+      S.myWounds = S.oppWounds = 0; S.myLast = S.oppLast = null; S.round = 0; S.log = []; S.over = null;
+      S.rematch = { me: false, them: false }; S.inbox = {};
+      startRound();
+    }
+  }
+  function onMessage(m) {
+    if (!alive) return;
+    if (m.t === "weapon") { S.oppW = m.w; S.oppReady = false; renderStatus(); }
+    else if (m.t === "ready") { if (m.w) S.oppW = m.w; S.oppReady = true; renderStatus(); tryStart(); }
+    else if (m.t === "commit" || m.t === "reveal") {
+      if (m.round < S.round) return;
+      const slot = S.inbox[m.round] = S.inbox[m.round] || {};
+      if (m.t === "commit") { slot.hash = m.hash; if (m.w) S.oppW = m.w; } else { slot.card = m.card; slot.nonce = m.nonce; }
+      if (m.round !== S.round) return;               // future round: buffered, picked up by startRound
+      S.opp = slot;
+      if (m.t === "commit" && (S.phase === "choose" || S.phase === "waitCommit")) {
+        $("oppPlay").innerHTML = cardHTML(null, { faceDown: true }); $("oppPlay").firstElementChild.classList.add("arrive");
+      }
+      renderStatus(); advance();
+    }
+    else if (m.t === "rematch") { S.rematch.them = true; S.oppReady = false; renderStatus(); if (S.rematch.me) rearm(); }
+    else if (m.t === "bye") { S.phase = "over"; S.over = "Your opponent left."; renderAll(); }
+  }
+  function rearm() {
+    S.phase = "arming"; S.myReady = false; S.oppReady = false; S.rematch = { me: false, them: false };
+    S.myWounds = S.oppWounds = 0; S.myLast = S.oppLast = null; S.log = []; S.inbox = {}; S.round = 0;
+    $("myPlay").innerHTML = ""; $("oppPlay").innerHTML = ""; $("clash").textContent = "";
+    renderAll(); send({ t: "weapon", w: S.myW });
+  }
+
+  // ---------- controls ----------
+  on("weaponSel", "change", () => { S.myW = $("weaponSel").value; send({ t: "weapon", w: S.myW }); renderAll(); });
+  on("readyBtn", "click", () => { S.myReady = true; send({ t: "ready", w: S.myW }); renderStatus(); tryStart(); });
+  on("rematchBtn", "click", () => { S.rematch.me = true; send({ t: "rematch" }); renderStatus(); if (S.rematch.them) rearm(); });
+  if ($("weaponSel") && $("weaponSel").value) S.myW = $("weaponSel").value;
+  net.onMessage(onMessage);
+  send({ t: "weapon", w: S.myW });
+  renderAll();
+  return { S, play, onMessage, destroy() { alive = false; } };
+}
+
+
+
+// ---------- page glue ----------
+const $ = id => document.getElementById(id);
+const motion = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+for (const id of ["weaponSel", "botW"]) for (const k in WEAPONS) {
+  const o = document.createElement("option"); o.value = k; o.textContent = `${WEAPON_LABEL[k]} — speed penalty ${WEAPONS[k].speed}, damage ${WEAPONS[k].dmg}`; $(id).appendChild(o);
+}
+$("weaponSel").value = "Long"; $("botW").value = ["Dagger","Short","Long","Battle","Great"][Math.floor(Math.random()*5)];
+
+let duel = null, peer = null, conn = null;
+function showGame(roomText) { $("lobby").style.display = "none"; $("game").classList.add("show"); $("roomLine").innerHTML = roomText; }
+function backToLobby() {
+  if (duel) duel.destroy();
+  if (conn) { try { conn.send({ t: "bye" }); conn.close(); } catch (e) {} }
+  if (peer) { try { peer.destroy(); } catch (e) {} }
+  conn = peer = duel = null;
+  $("game").classList.remove("show"); $("lobby").style.display = ""; $("roomLine").textContent = ""; $("status").textContent = "";
+  $("share").classList.remove("show"); $("hostWait").textContent = ""; $("joinMsg").textContent = ""; $("hostBtn").disabled = false;
+  // drop a ?join= code from the address bar if there is one; sandboxed previews (about:srcdoc) forbid this, so ignore failures
+  if (location.search) { try { history.replaceState(null, "", location.pathname); } catch (e) {} }
+}
+function wrapConn(c) {
+  const q = []; let h = null;
+  c.on("data", m => h ? h(m) : q.push(m));
+  c.on("close", () => h && h({ t: "bye" }));
+  c.on("error", () => h && h({ t: "bye" }));
+  return { onMessage(fn) { h = fn; while (q.length) fn(q.shift()); }, send(m) { if (c.open) c.send(m); }, close() { c.close(); } };
+}
+function begin(net, practice, roomText) {
+  showGame(roomText);
+  duel = createDuel({ $, net, practice, motion });
+}
+function host() {
+  const code = roomCode();
+  peer = new Peer("duel-" + code, { debug: 1 });
+  $("hostBtn").disabled = true; $("hostWait").textContent = "Opening a room…";
+  peer.on("open", () => {
+    const link = `${location.href.split("?")[0].split("#")[0]}?join=${code}`;
+    $("shareCode").textContent = code; $("shareLink").value = link; $("share").classList.add("show");
+    $("hostWait").textContent = "Waiting for your opponent.";
+  });
+  peer.on("connection", c => {
+    if (conn) { c.close(); return; }
+    conn = c;
+    c.on("open", () => begin(wrapConn(c), false, `Room <b>${code}</b>`));
+  });
+  peer.on("error", e => { $("hostWait").textContent = `Couldn't open a room (${e.type}). Try again.`; $("hostBtn").disabled = false; });
+}
+function join(code) {
+  code = (code || "").trim().toUpperCase();
+  if (code.length !== 5) { $("joinMsg").textContent = "Codes are five characters."; return; }
+  $("joinMsg").textContent = "Connecting…"; $("joinBtn").disabled = true;
+  peer = new Peer({ debug: 1 });
+  peer.on("open", () => {
+    const c = peer.connect("duel-" + code, { reliable: true });
+    conn = c;
+    c.on("open", () => { $("joinBtn").disabled = false; begin(wrapConn(c), false, `Room <b>${code}</b>`); });
+    c.on("error", () => { $("joinMsg").textContent = "Couldn't connect. Check the code."; $("joinBtn").disabled = false; });
+  });
+  peer.on("error", e => { $("joinMsg").textContent = e.type === "peer-unavailable" ? "No room with that code is open." : `Connection failed (${e.type}).`; $("joinBtn").disabled = false; });
+}
+$("hostBtn").addEventListener("click", host);
+$("joinBtn").addEventListener("click", () => join($("joinCode").value));
+$("joinCode").addEventListener("keydown", e => { if (e.key === "Enter") join($("joinCode").value); });
+$("copyBtn").addEventListener("click", () => { navigator.clipboard && navigator.clipboard.writeText($("shareLink").value); $("copyBtn").textContent = "Copied"; setTimeout(() => $("copyBtn").textContent = "Copy link", 1500); });
+$("botBtn").addEventListener("click", () => begin(makeBot($("botW").value), true, "Practice"));
+$("leaveBtn").addEventListener("click", backToLobby);
+const params = new URLSearchParams(location.search);
+if (params.get("join")) { $("joinCode").value = params.get("join").toUpperCase(); join(params.get("join")); }
+</script>
+</body>
+</html>
